@@ -1,0 +1,68 @@
+{
+  "name": "bota-skills",
+  "description": "Agent-ready integration guides for the Bota API",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "id": "device-registration",
+      "title": "Device Registration",
+      "description": "Register a Bota device, bind it to an end user, handle lifecycle and reassignment",
+      "path": "device-registration/skill.md",
+      "tags": ["devices", "end-users", "setup", "dtok"],
+      "apis": [
+        "POST /v1/devices",
+        "POST /v1/devices/:id/bind",
+        "POST /v1/devices/:id/unbind"
+      ]
+    },
+    {
+      "id": "recording-upload",
+      "title": "Recording Upload",
+      "description": "Create a recording record, get a presigned S3 URL, upload audio, and complete the upload",
+      "path": "recording-upload/skill.md",
+      "tags": ["recordings", "uploads", "s3", "bluetooth"],
+      "apis": [
+        "POST /v1/recordings",
+        "POST /v1/recordings/:id/upload-url",
+        "POST /v1/recordings/:id/upload-complete"
+      ]
+    },
+    {
+      "id": "webhook-handling",
+      "title": "Webhook Handling",
+      "description": "Register a webhook endpoint and verify HMAC-SHA256 signatures for all Bota events",
+      "path": "webhook-handling/skill.md",
+      "tags": ["webhooks", "events", "security", "hmac"],
+      "apis": [
+        "POST /v1/webhooks",
+        "GET /v1/webhooks",
+        "DELETE /v1/webhooks/:id"
+      ]
+    },
+    {
+      "id": "auto-processing",
+      "title": "Auto-Processing",
+      "description": "Enable zero-code transcription and summary pipeline — upload once and get results automatically",
+      "path": "auto-processing/skill.md",
+      "tags": ["transcriptions", "summaries", "config", "pipeline"],
+      "apis": [
+        "PUT /v1/projects/config/processing",
+        "POST /v1/transcriptions",
+        "POST /v1/summaries"
+      ]
+    },
+    {
+      "id": "streaming-upload",
+      "title": "Streaming Upload",
+      "description": "Upload audio chunks during recording for faster transcription on long recordings",
+      "path": "streaming-upload/skill.md",
+      "tags": ["recordings", "uploads", "streaming", "cellular", "wifi"],
+      "apis": [
+        "POST /v1/recordings",
+        "POST /v1/recordings/:id/upload-url",
+        "POST /v1/recordings/:id/upload-complete",
+        "POST /v1/recordings/:id/finalize"
+      ]
+    }
+  ]
+}
