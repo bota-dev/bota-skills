@@ -41,3 +41,8 @@ Bota is a **B2B2C platform** — you are the developer integrating the API; your
 - [Full API reference](https://docs.bota.dev)
 - [llms-full.txt](https://docs.bota.dev/llms-full.txt) — single-document comprehensive reference for AI agents
 - [API Introduction](https://docs.bota.dev/api-reference/introduction)
+
+
+## Internal engineering workflows
+
+The [engineering harness](engineering/README.md) contains shared coding instructions, team skills, version pinning and consistency checks. It is maintained separately from the API integration guides above.

@@ -1,0 +1,21 @@
+name: Engineering harness
+
+on:
+  pull_request:
+    paths: ['engineering/**', '.github/workflows/engineering-harness.yml']
+  push:
+    branches: [main]
+    paths: ['engineering/**', '.github/workflows/engineering-harness.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test install, rendering, drift detection and source pinning
+        run: python3 -m unittest discover -s engineering/tests -v
