@@ -1,68 +1,212 @@
 {
   "name": "bota-skills",
   "description": "Agent-ready integration guides for the Bota API",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "skills": [
     {
       "id": "device-registration",
       "title": "Device Registration",
-      "description": "Register a Bota device, bind it to an end user, handle lifecycle and reassignment",
+      "description": "Register on your backend and prepare, physically verify, then confirm or abort an exact device binding attempt",
       "path": "device-registration/skill.md",
-      "tags": ["devices", "end-users", "setup", "dtok"],
+      "tags": [
+        "devices",
+        "end-users",
+        "setup",
+        "dtok"
+      ],
       "apis": [
+        "POST /v1/end-users",
+        "GET /v1/end-users",
+        "GET /v1/devices",
         "POST /v1/devices",
         "POST /v1/devices/:id/bind",
-        "POST /v1/devices/:id/unbind"
-      ]
+        "POST /v1/devices/:id/bind/:bindingAttemptId/confirm",
+        "POST /v1/devices/:id/bind/:bindingAttemptId/abort"
+      ],
+      "sha256": "831d0e9ccc3ba3ce85024b9431480228737cbc83db63d0e9fc0e2064781bc065",
+      "qualification": "source-reviewed"
     },
     {
       "id": "recording-upload",
       "title": "Recording Upload",
-      "description": "Create a recording record, get a presigned S3 URL, upload audio, and complete the upload",
+      "description": "Ordinary server audio import with full-file signed PUT and verified completion; physical App SDK capture requires encrypted-upload-v2",
       "path": "recording-upload/skill.md",
-      "tags": ["recordings", "uploads", "s3", "bluetooth"],
+      "tags": [
+        "recordings",
+        "uploads",
+        "s3",
+        "server-import",
+        "verification"
+      ],
       "apis": [
         "POST /v1/recordings",
         "POST /v1/recordings/:id/upload-url",
         "POST /v1/recordings/:id/upload-complete"
-      ]
+      ],
+      "sha256": "c8c72414ac3d9ccaa60734fd7159fa304828ff9f817d708cb7fb9e5eb42ff417",
+      "qualification": "source-reviewed"
     },
     {
       "id": "webhook-handling",
       "title": "Webhook Handling",
-      "description": "Register a webhook endpoint and verify HMAC-SHA256 signatures for all Bota events",
+      "description": "Configure endpoints in Platform, verify timestamp-bound raw-body signatures, and durably deduplicate documented events",
       "path": "webhook-handling/skill.md",
-      "tags": ["webhooks", "events", "security", "hmac"],
-      "apis": [
-        "POST /v1/webhooks",
-        "GET /v1/webhooks",
-        "DELETE /v1/webhooks/:id"
-      ]
+      "tags": [
+        "webhooks",
+        "events",
+        "security",
+        "hmac"
+      ],
+      "apis": [],
+      "sha256": "944a1a3cb1f138274320a17274fb5d745360499c1c17ee95a20ed196eb7ba7bc",
+      "qualification": "source-reviewed"
     },
     {
       "id": "auto-processing",
       "title": "Auto-Processing",
-      "description": "Enable zero-code transcription and summary pipeline — upload once and get results automatically",
+      "description": "Inspect or explicitly configure hierarchical best-effort processing intent, then verify actual job outcomes",
       "path": "auto-processing/skill.md",
-      "tags": ["transcriptions", "summaries", "config", "pipeline"],
+      "tags": [
+        "transcriptions",
+        "summaries",
+        "config",
+        "pipeline"
+      ],
       "apis": [
-        "PUT /v1/projects/config/processing",
-        "POST /v1/transcriptions",
-        "POST /v1/summaries"
-      ]
+        "GET /v1/config/processing",
+        "PUT /v1/config/processing",
+        "GET /v1/end-users/:id/config/processing",
+        "PUT /v1/end-users/:id/config/processing",
+        "GET /v1/devices/:id/config/processing",
+        "PUT /v1/devices/:id/config/processing"
+      ],
+      "sha256": "a4d92a15c1701b5927d4cd0946c01b05367ec2a784c308f43de6a0f3ffe2519c",
+      "qualification": "source-reviewed"
     },
     {
       "id": "streaming-upload",
       "title": "Streaming Upload",
-      "description": "Upload audio chunks during recording for faster transcription on long recordings",
+      "description": "Maintain compatibility HTTP streaming with one-based chunks, ordered assembly and retained-source verification; no encrypted-v2 downgrade",
       "path": "streaming-upload/skill.md",
-      "tags": ["recordings", "uploads", "streaming", "cellular", "wifi"],
+      "tags": [
+        "recordings",
+        "uploads",
+        "streaming",
+        "cellular",
+        "wifi"
+      ],
       "apis": [
         "POST /v1/recordings",
-        "POST /v1/recordings/:id/upload-url",
-        "POST /v1/recordings/:id/upload-complete",
+        "POST /v1/recordings/:id/chunks/:chunk_number/upload-url",
         "POST /v1/recordings/:id/finalize"
-      ]
+      ],
+      "sha256": "b924e02b2c31301acde6c2fa541e1c07fda7c80fd5855c5a3ff289fb3bf5cf68",
+      "qualification": "source-reviewed"
+    },
+    {
+      "id": "api-sdk",
+      "title": "API SDK",
+      "description": "Use the experimental TypeScript or async Python API client within its declared read and ordinary end-user-write cohorts",
+      "path": "api-sdk/skill.md",
+      "tags": [
+        "sdk",
+        "typescript",
+        "python",
+        "server"
+      ],
+      "apis": [
+        "GET /v1/auth/identity",
+        "GET /v1/end-users",
+        "GET /v1/end-users/:id",
+        "GET /v1/devices",
+        "GET /v1/devices/:id",
+        "GET /v1/recordings",
+        "GET /v1/recordings/:id",
+        "GET /v1/transcriptions",
+        "GET /v1/transcriptions/:id",
+        "GET /v1/summaries",
+        "GET /v1/summaries/:id",
+        "POST /v1/end-users",
+        "PATCH /v1/end-users/:id"
+      ],
+      "sha256": "499831e84eed2aecd8b8a1570269f9263ae78a83e7dcc7a4b5c9e3777c31ad54",
+      "qualification": "source-reviewed"
+    },
+    {
+      "id": "cli",
+      "title": "CLI",
+      "description": "Select a matching CLI release, enroll an explicit API-key profile and inspect authorized project identity/resources",
+      "path": "cli/skill.md",
+      "tags": [
+        "cli",
+        "profiles",
+        "api-keys"
+      ],
+      "apis": [
+        "GET /v1/auth/identity",
+        "GET /v1/devices",
+        "GET /v1/recordings"
+      ],
+      "sha256": "e3ab284417bf7067ba8dfb8b94ef79c1129a895db9173bc9d1cce63d99ed409f",
+      "qualification": "source-reviewed"
+    },
+    {
+      "id": "local-mcp",
+      "title": "Local MCP",
+      "description": "Configure a noninteractive local stdio adapter using curated compatibility tools and explicit credentials",
+      "path": "local-mcp/skill.md",
+      "tags": [
+        "mcp",
+        "stdio",
+        "local",
+        "compatibility"
+      ],
+      "apis": [],
+      "sha256": "6894544e3a6be5f747b39911a59c4c2ea606f56438da0282fc9ef4c142a2eed3",
+      "qualification": "source-reviewed"
+    },
+    {
+      "id": "hosted-mcp",
+      "title": "Hosted MCP",
+      "description": "Choose direct HTTP or hosted stdio bridging with authorized discovery, supported results and uncertainty handling",
+      "path": "hosted-mcp/skill.md",
+      "tags": [
+        "mcp",
+        "hosted",
+        "http",
+        "bridge"
+      ],
+      "apis": [],
+      "sha256": "aaaaef6ef2e30e4b0a07c346b1f32187619b8f5016ddd49afc30c26569582266",
+      "qualification": "source-reviewed"
+    },
+    {
+      "id": "shared-auth",
+      "title": "Shared Authentication",
+      "description": "Choose project keys/profiles or end-user enrollment while keeping inactive Platform login and protocol credentials separate",
+      "path": "shared-auth/skill.md",
+      "tags": [
+        "auth",
+        "api-keys",
+        "profiles",
+        "end-users"
+      ],
+      "apis": [
+        "GET /v1/auth/identity",
+        "POST /v1/end-users/:id/user-token",
+        "DELETE /v1/end-users/:id/user-token"
+      ],
+      "sha256": "cf960829e6854e2db412073fe303e1e6bdd53bb4d71baaa036d2a44d09f75fea",
+      "qualification": "source-reviewed"
     }
-  ]
+  ],
+  "content_digest": "sha256 of UTF-8 guide text with CRLF normalized to LF",
+  "qualification": "source-reviewed; synthetic checks are not live, native or physical acceptance",
+  "sources": {
+    "backend": "https://github.com/bota-dev/bota/tree/2c388b098d4e0d8a4d3893018fed47a870305795",
+    "api_sdk": "https://github.com/bota-dev/api-sdk/tree/3546bc71da16885f664aaa7d057e5baddc0ba13b",
+    "cli": "https://github.com/bota-dev/bota-cli/tree/5270781b39ff59f7b889c58a288a59f63f50ca46",
+    "device_binding": "https://github.com/bota-dev/bota/tree/d69693982e48cb8b70f501387f11802bff2d42b0"
+  },
+  "contracts_sha256": "705d1b34ae00f2bc8cc4bad185e8b9d65236778c6f1d32cccd993541caea0030"
 }

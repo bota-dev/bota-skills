@@ -1,223 +1,100 @@
 # Skill: Webhook Handling
 
-## Purpose
+## When to use
 
-Register a webhook endpoint with Bota and securely verify incoming event signatures so you can react to recording, transcription, and summary events in real time.
+Use to receive, verify and durably dispatch Bota project events on your server.
+Events can be delayed, duplicated, out of order or absent when persistence
+fails. Fetch current authorized resource state when order matters. A webhook
+alone is not an upload-verification or device-cleanup receipt.
 
-## When to Use
+## Configure the endpoint
 
-- Triggering downstream actions when a transcription or summary completes
-- Syncing recording status to your database
-- Sending notifications to end users when their recordings are ready
-- Monitoring device health events (low battery, offline)
+Manage endpoints in **Bota Platform → project → Webhooks → Endpoints**.
+Select documented events and store the signing secret in your server's secret
+manager as `BOTA_WEBHOOK_SECRET`. Public `/v1/webhooks` CRUD is unavailable;
+do not invent API/SDK management methods.
 
-## Prerequisites
+Local development uses an explicitly configured tunnel and Platform endpoint.
+The CLI source preview offers manual forwarding of original raw bytes and
+signature headers; it neither registers endpoints nor verifies for the receiver.
+Tunnel creation/test delivery need user intent. Never paste secrets into a model.
 
-- A Bota secret key (`sk_live_*` or `sk_test_*`)
-- A publicly accessible HTTPS URL for your webhook endpoint
-- For local development: a tunnel tool (e.g. `ngrok http 3000`)
+## Verify before parsing
 
-## Event Types
-
-| Event | When It Fires |
-|-------|--------------|
-| `recording.created` | Recording record created |
-| `recording.uploaded` | Audio file successfully uploaded to S3 |
-| `transcription.completed` | Transcription finished — transcript available |
-| `transcription.failed` | Transcription failed |
-| `summary.completed` | Summary finished — summary available |
-| `summary.failed` | Summary failed |
-| `device.low_battery` | Device battery below threshold (Enterprise) |
-| `device.offline` | Device hasn't sent a heartbeat in 24h (Enterprise) |
-
-## How It Works
-
-```
-Bota → POST <your-endpoint>
-  Headers:
-    X-Bota-Signature: sha256=<hmac>
-    X-Bota-Event: transcription.completed
-    X-Bota-Delivery: <delivery-id>
-  Body: { event, data, created_at }
+```text
+X-Bota-Signature: v1=<64 hexadecimal characters>
+X-Bota-Timestamp: <Unix seconds>
+X-Bota-Event-Id: <event identifier>
+Content-Type: application/json
 ```
 
-Bota signs every request with HMAC-SHA256 using your webhook secret. Always verify the signature before processing.
+HMAC-SHA256 signs `<timestamp>.<exact raw request body>` using the endpoint
+secret. Reject missing/malformed headers and timestamps beyond 300 seconds from
+the receiver clock. Compare equal-length decoded signatures in constant time.
+Parsing/re-serializing JSON first changes the signed bytes.
 
-## Implementation
+The [Node verifier](examples/verify-webhook.mjs) uses only `node:crypto`, reads
+no credentials at import and returns a boolean. Supply the secret from the
+receiver environment:
 
-### Step 1 — Register Your Webhook
+```javascript
+import { verifyBotaWebhook } from './examples/verify-webhook.mjs';
+
+async function acceptWebhook(rawBody, headers) {
+  const valid = verifyBotaWebhook(
+    rawBody, headers['x-bota-signature'], headers['x-bota-timestamp'],
+    process.env.BOTA_WEBHOOK_SECRET,
+  );
+  if (!valid) return { status: 401 };
+  let event;
+  try { event = JSON.parse(rawBody.toString('utf8')); }
+  catch { return { status: 400 }; }
+  if (!event || typeof event.id !== 'string' || !event.id ||
+      typeof event.type !== 'string' || event.id !== headers['x-bota-event-id']) {
+    return { status: 400 };
+  }
+  await persistOrEnqueueOnce(event.id, event);
+  return { status: 204 };
+}
+```
+
+`persistOrEnqueueOnce` is your durable transaction/queue integration point,
+not an SDK function. Deduplicate and persist work before acknowledging; return
+non-2xx on durable-acceptance failure without logging signed headers, secrets or
+customer payloads. Acknowledging first can lose events on process failure.
+Use a bounded raw-body reader before JSON middleware and enforce your receiver's
+size/deadline policy. The verifier does not implement that server or queue.
+
+## Dispatch the real envelope
+
+Events use `{id, type, created_at, data}`; resource payloads are nested as
+`data.recording`, `data.transcription` or `data.summary`. Consult the
+[event reference](https://docs.bota.dev/webhooks/events) for each shape, rather
+than inventing a flat `event` envelope or undocumented device-health events.
+
+Deduplicate by stable event `id`/`X-Bota-Event-Id`, not a per-attempt delivery
+header. Make the business effect idempotent with a durable claim; separate
+`set` then process calls are not atomic exactly-once handling. Do not assume
+arrival order or automatically create/retry paid jobs from a failure event.
+
+Delivery uses a 10-second timeout. Persisted events have up to six attempts
+through a periodic scan: next attempt can be immediately eligible, followed by
+1 minute, 5 minutes, 30 minutes and 2 hours after the preceding failure. Queue-scan
+latency adds delay. Leased-attempt source and live deployment qualification
+remain separate; delivery is not guaranteed real time.
+
+## Verification and references
+
+Run synthetic tests without dependencies or Bota credentials:
 
 ```bash
-curl -X POST https://api.bota.dev/v1/webhooks \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://yourapp.com/webhooks/bota",
-    "events": [
-      "transcription.completed",
-      "summary.completed",
-      "transcription.failed"
-    ]
-  }'
+node --test webhook-handling/tests/verify-webhook.test.mjs
 ```
 
-```json
-{
-  "id": "wh_01HGHI...",
-  "url": "https://yourapp.com/webhooks/bota",
-  "events": ["transcription.completed", "summary.completed", "transcription.failed"],
-  "secret": "whsec_abc123...",
-  "created_at": "2025-01-15T10:00:00Z"
-}
-```
+This proves signature/timestamp handling, not your raw-body reader, durable
+queue, tunnel or live delivery.
 
-**Save the `secret` immediately — it's shown only once.**
-
-### Step 2 — Verify the Signature
-
-**Node.js / TypeScript:**
-
-```typescript
-import crypto from "crypto";
-import express from "express";
-
-const app = express();
-
-// IMPORTANT: Use raw body, not parsed JSON
-app.post("/webhooks/bota", express.raw({ type: "application/json" }), (req, res) => {
-  const signature = req.headers["x-bota-signature"] as string;
-  const webhookSecret = process.env.BOTA_WEBHOOK_SECRET!;
-
-  if (!verifySignature(req.body, signature, webhookSecret)) {
-    return res.status(401).json({ error: "Invalid signature" });
-  }
-
-  const event = JSON.parse(req.body.toString());
-
-  // Respond fast — process async
-  res.status(200).json({ received: true });
-
-  handleEvent(event).catch(console.error);
-});
-
-function verifySignature(
-  body: Buffer,
-  signature: string,
-  secret: string
-): boolean {
-  const expected = "sha256=" + crypto
-    .createHmac("sha256", secret)
-    .update(body)
-    .digest("hex");
-
-  // Constant-time comparison prevents timing attacks
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
-}
-```
-
-**Python (Flask):**
-
-```python
-import hmac
-import hashlib
-import json
-from flask import Flask, request, abort
-
-app = Flask(__name__)
-WEBHOOK_SECRET = os.environ["BOTA_WEBHOOK_SECRET"]
-
-@app.route("/webhooks/bota", methods=["POST"])
-def bota_webhook():
-    signature = request.headers.get("X-Bota-Signature", "")
-    body = request.get_data()  # raw bytes
-
-    expected = "sha256=" + hmac.new(
-        WEBHOOK_SECRET.encode(),
-        body,
-        hashlib.sha256
-    ).hexdigest()
-
-    if not hmac.compare_digest(signature, expected):
-        abort(401)
-
-    event = json.loads(body)
-    # Process async in production
-    handle_event(event)
-    return {"received": True}, 200
-```
-
-### Step 3 — Handle Events
-
-```typescript
-async function handleEvent(event: BotaEvent) {
-  switch (event.event) {
-    case "transcription.completed": {
-      const { recording_id, transcription_id, end_user_id } = event.data;
-      // Fetch full transcript if needed
-      // Update your database
-      // Notify end user
-      break;
-    }
-
-    case "summary.completed": {
-      const { recording_id, summary_id, end_user_id, template_id } = event.data;
-      // Save summary to your CRM, EHR, etc.
-      break;
-    }
-
-    case "transcription.failed": {
-      const { recording_id, error } = event.data;
-      // Alert your team, retry if appropriate
-      break;
-    }
-  }
-}
-```
-
-### Event Payload Shape
-
-```json
-{
-  "event": "transcription.completed",
-  "created_at": "2025-01-15T10:10:00Z",
-  "data": {
-    "transcription_id": "txn_01HJKL...",
-    "recording_id": "rec_01HDEF...",
-    "end_user_id": "eu_01HXYZ...",
-    "device_id": "dev_01HABC...",
-    "status": "completed",
-    "duration_seconds": 3600,
-    "language": "en"
-  }
-}
-```
-
-## Gotchas
-
-**Use `express.raw()` or equivalent — not `express.json()`.** Signature verification runs on the raw bytes. If your framework parses the body first, the signature check will fail because whitespace and key ordering may differ.
-
-**Respond 200 before processing.** Bota retries deliveries that don't receive a 2xx within 30 seconds. Acknowledge immediately, then process async.
-
-**Use `timingSafeEqual` (or `hmac.compare_digest` in Python).** Regular string comparison (`===`) is vulnerable to timing attacks. Always use constant-time comparison.
-
-**Bota retries failed deliveries** with exponential backoff: 5s, 30s, 5min, 30min, 2hr. Make your handler idempotent — you may receive the same event twice.
-
-**Deduplicate on `X-Bota-Delivery`.** Each delivery attempt has a unique delivery ID in the header. Store processed delivery IDs to avoid double-processing:
-```typescript
-const deliveryId = req.headers["x-bota-delivery"] as string;
-if (await redis.sismember("processed-deliveries", deliveryId)) return res.json({ received: true });
-await redis.sadd("processed-deliveries", deliveryId);
-// now process
-```
-
-**Webhook secret is shown only once.** Store it in your secrets manager immediately after registration. If lost, delete the webhook and create a new one.
-
-## Reference
-
-- [Webhooks Overview](https://docs.bota.dev/webhooks/overview) — setup, retry policy, best practices
-- [Webhook Events](https://docs.bota.dev/webhooks/events) — all event types with full payload schemas
-- [Register Webhook](https://docs.bota.dev/api-reference/webhooks/create)
-- [Auto-Processing Skill](../auto-processing/skill.md) — trigger transcription/summary automatically
+- [Pinned signature headers](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/webhooks/signature.ts)
+- [Pinned signing algorithm](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/utils/crypto.ts)
+- [Pinned retry repository](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/repositories/webhook.repository.ts)
+- [Receiver/signatures](https://docs.bota.dev/webhooks/overview), [events](https://docs.bota.dev/webhooks/events)

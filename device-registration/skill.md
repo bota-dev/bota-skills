@@ -1,176 +1,144 @@
 # Skill: Device Registration
 
-## Purpose
+## When to use
 
-Register a Bota wearable device in your project and bind it to an end user so the device can capture and upload recordings.
+Use for a customer backend registering a Bota device or preparing a new
+device-confirmed BLE binding. Physical capture, transfer and cleanup belong
+to the separate [App SDK](https://docs.bota.dev/api-reference/client-sdks).
+Reading this recipe does not authorize registration or reassignment.
 
-## When to Use
+## Availability and trust prerequisites
 
-- User pairs a new device via your mobile app for the first time
-- Reassigning a device from one user to another
-- Provisioning a fleet of devices for enterprise deployment
+This guide targets the **unreleased mandatory encrypted-delivery source** at
+`d6969398`. Bind requires `credential_delivery: "hpke_v1"` for every device;
+there is no plaintext fallback. Use a coordinated, explicitly qualified backend,
+App SDK, app and firmware cohort. Published package pins alone do not establish
+compatibility, and this guide does not authorize installation or cutover.
 
-## Prerequisites
+The backend requires migration 124, independently trusted serial-to-physical-key
+enrollment, and matching signing/environment configuration. Manufacturing or
+service administration supplies that trust; an API request, BLE public-key read
+or old mutable device row cannot enroll it. Unsupported clients, absent/revoked
+trust and mismatched keys must stop. Never repair this by restoring raw delivery.
 
-- A Bota secret key (`sk_live_*` or `sk_test_*`) — server-side only, never in mobile apps
-- The device's **serial number** (printed on the device, readable via Bluetooth during pairing)
-- An end user already created in your project (see `POST /v1/end-users`)
+## Authority and inputs
 
-## How It Works
+- Authenticate your application's user and resolve their Bota end-user ID on
+  your server. An arbitrary request's end-user ID is not authorization.
+- Supply `BOTA_API_KEY` from your server's secret manager/environment.
+  Restricted keys need `end_users:write` for user creation and `devices:write`
+  for registration/binding. Keep keys and provisional tokens out of URLs,
+  logs, client bundles and model context.
+- Read the exact serial/model through the supported device integration. Scan
+  names/suffixes are not full serial identity. Register an explicit supported
+  model: `bota_pin`, `bota_note` or `bota_pin_pro`.
 
-```
-Device (BLE pairing)
-  → Mobile App (reads serial number)
-    → Your Backend (calls Bota API with sk_live_*)
-      → POST /v1/devices          (register)
-      → POST /v1/devices/:id/bind (bind to end user → returns dtok_*)
-    → Mobile App (receives dtok_*)
-  → Device (stores dtok_* via BLE)
-```
+## Backend sequence
 
-The `dtok_*` (device token) is provisioned onto the device and used for all future direct uploads. It is returned **only once** — store it on the device immediately.
+1. Create or resolve the application user's end-user mapping. Creation accepts
+   `external_id`, `name`, `email` and `metadata`; `display_name` is not the field.
+   Save the returned `eu_*` ID. Reconcile an uncertain create by its saved
+   external ID before deciding on another write.
+2. Register using `serial_number` and required `model`. Save the returned
+   `dev_*` ID alongside the serial. Device registration has no `external_id`
+   field; a serial remains reserved after deletion.
+3. Prepare binding with required `credential_delivery: "hpke_v1"`,
+   `confirmation_mode: "device"`, the exact end-user ID and observed `pk_d` when
+   available. `pk_d` is only a consistency check against independent trusted
+   enrollment; it cannot enroll or replace a manufacturing key.
+4. Retain the exact `binding_attempt_id`. The credential is returned only as
+   `credential_envelope`, with
+   `format: "bota-device-token-v1"`, `encoding: "base64url"` and canonical
+   unpadded `data`. It contains no raw `device_token`. Reject plaintext, missing,
+   malformed, mixed or obsolete string-in-token-field representations. Other
+   device/attempt metadata may accompany it; never forward the whole response.
+   Forward the envelope opaquely through the authenticated app/qualified SDK
+   integration. Neither your server nor app decrypts it. Only firmware verifies
+   signer, recipient, environment, purpose and binding before installing the
+   decrypted token. The backend remains unbound until that succeeds.
+5. After physical verification, POST `{}` to
+   `/devices/{id}/bind/{bindingAttemptId}/confirm`. This commits binding and
+   advances its generation. Repeating that exact confirmation after a lost
+   success response is supported.
+6. On known provisioning failure/cancellation, abort that exact attempt with
+   `/devices/{id}/bind/{bindingAttemptId}/abort`. Unknown preparation or device
+   outcomes need reconciliation; do not automatically unbind/rebind or replace
+   an attempt. Abort does not undo an already confirmed binding.
 
-## Implementation
+Omitted/`immediate` confirmation retains its older binding-state behavior but
+still requires encrypted delivery. New mobile/BLE integrations use device
+confirmation. After device decryption/installation, `dtok_*` remains the raw
+HTTPS Bearer credential for capability-enabled WiFi/cellular access, not a
+developer/application-user login. Delivery encryption is separate from recording
+encryption. A BLE connection does not establish radio capability.
 
-### Step 1 — Create the End User (if not already done)
+Existing valid stored tokens are not automatically erased, re-enrolled or
+rotated by this change. Device-only encrypted refresh/recovery is a separate
+protocol; do not implement it as a developer CLI/SDK command or automatically
+refresh during registration. Retired claim/serial-only provision routes cannot
+restore credential issuance.
 
-```bash
-curl -X POST https://api.bota.dev/v1/end-users \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "external_id": "your-db-user-id-123",
-    "display_name": "Jane Smith"
-  }'
-```
+## Server HTTP example
 
-```json
-{
-  "id": "eu_01HXYZ...",
-  "external_id": "your-db-user-id-123",
-  "display_name": "Jane Smith",
-  "created_at": "2025-01-15T10:00:00Z"
+This example prepares only; it performs no BLE provisioning or confirmation.
+Persist intent and resolve unknown prior operations before calling it. Its
+IDs/model must already belong to the authenticated application workflow.
+
+```javascript
+const api = 'https://api.bota.dev/v1'; // Change only for a trusted deployment.
+const key = process.env.BOTA_API_KEY;
+if (!key) throw new Error('BOTA_API_KEY is required');
+
+async function post(path, body) {
+  const response = await fetch(api + path, {
+    method: 'POST', redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.timeout(30_000),
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Bota request failed (${response.status})`);
+  return response.json();
+}
+
+async function registerAndPrepare({ serialNumber, model, endUserId, devicePublicKey }) {
+  const device = await post('/devices', { serial_number: serialNumber, model });
+  await saveDeviceMapping(serialNumber, device.id);
+  const attempt = await post(`/devices/${encodeURIComponent(device.id)}/bind`, {
+    end_user_id: endUserId, confirmation_mode: 'device', credential_delivery: 'hpke_v1',
+    ...(devicePublicKey === undefined ? {} : { pk_d: devicePublicKey }),
+  });
+  if (Object.hasOwn(attempt, 'device_token') || !attempt.credential_envelope) {
+    throw new Error('Encrypted credential delivery is required; reconcile the attempt');
+  }
+  await provisionExactAttempt(device.id, {
+    binding_attempt_id: attempt.binding_attempt_id,
+    credential_envelope: attempt.credential_envelope,
+  });
 }
 ```
 
-Save `eu_01HXYZ...` — you'll use it in the bind call.
+`saveDeviceMapping` and `provisionExactAttempt` are application-owned durability
+and secure provisioning integration points, not implemented here or invented
+callable SDK methods. The provisioning hook must use the matching qualified
+envelope parser/device path, reject invalid or mixed input, and wait for verified
+physical installation. A presence check in this example is not cryptographic
+verification. Never log the envelope or return the whole attempt to a model or
+public endpoint. Separate explicit confirmation/abort from preparation; this
+helper makes no automatic retry and cannot establish published SDK support.
 
-### Step 2 — Register the Device
+GET `/devices?serial_number=...` can recover a known mapping, but absence alone
+does not prove an earlier request stopped. Do not invent unconditional
+`Idempotency-Key` replay guarantees or unbind/rebind merely because a token was
+lost. The current API SDK has no device-create/bind methods.
 
-```bash
-curl -X POST https://api.bota.dev/v1/devices \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "serial_number": "PIN-2024-001234",
-    "external_id": "your-device-id-456"
-  }'
-```
+## Contract references
 
-```json
-{
-  "id": "dev_01HABC...",
-  "serial_number": "PIN-2024-001234",
-  "external_id": "your-device-id-456",
-  "status": "registered",
-  "created_at": "2025-01-15T10:01:00Z"
-}
-```
+- [Pinned device inputs](https://github.com/bota-dev/bota/blob/d69693982e48cb8b70f501387f11802bff2d42b0/api/src/routes/v1/devices/validation.ts)
+- [Pinned trusted delivery service](https://github.com/bota-dev/bota/blob/d69693982e48cb8b70f501387f11802bff2d42b0/api/src/services/device-token-delivery.service.ts)
+- [Owning encrypted-delivery review and release gates](https://github.com/bota-dev/bota/blob/d69693982e48cb8b70f501387f11802bff2d42b0/docs/reviews/device-token-envelope.md)
+- [Register](https://docs.bota.dev/api-reference/devices/create), [prepare](https://docs.bota.dev/api-reference/devices/bind), [confirm](https://docs.bota.dev/api-reference/devices/confirm-binding), [abort](https://docs.bota.dev/api-reference/devices/abort-binding)
+- [End-user creation](https://docs.bota.dev/api-reference/end-users/create)
+- [API SDK cohort](https://github.com/bota-dev/api-sdk/blob/3546bc71da16885f664aaa7d057e5baddc0ba13b/packages/typescript/README.md)
 
-### Step 3 — Bind the Device to the End User
-
-```bash
-curl -X POST https://api.bota.dev/v1/devices/dev_01HABC.../bind \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "end_user_id": "eu_01HXYZ..."
-  }'
-```
-
-```json
-{
-  "id": "dev_01HABC...",
-  "end_user_id": "eu_01HXYZ...",
-  "status": "bound",
-  "device_token": "dtok_abc123...",
-  "bound_at": "2025-01-15T10:02:00Z"
-}
-```
-
-**The `device_token` is shown only once.** Send it to your mobile app, which provisions it onto the device via Bluetooth.
-
-### TypeScript (Express backend)
-
-```typescript
-import Bota from "@bota.dev/node";
-
-const bota = new Bota({ apiKey: process.env.BOTA_API_KEY! });
-
-// Called from your mobile app during BLE pairing
-app.post("/api/devices/register", async (req, res) => {
-  const { serialNumber, userId } = req.body;
-
-  // Look up or create end user
-  const endUser = await bota.endUsers.getByExternalId(userId)
-    ?? await bota.endUsers.create({ external_id: userId });
-
-  // Register device
-  const device = await bota.devices.create({
-    serial_number: serialNumber,
-    external_id: `device-${serialNumber}`,
-  });
-
-  // Bind to end user → returns dtok_*
-  const bound = await bota.devices.bind(device.id, {
-    end_user_id: endUser.id,
-  });
-
-  // Return token to mobile app for BLE provisioning
-  res.json({
-    device_id: bound.id,
-    device_token: bound.device_token, // provision this onto the device
-  });
-});
-```
-
-### Device Reassignment
-
-When reassigning a device to a different user:
-
-```bash
-# 1. Unbind from current user (rotates the device token)
-curl -X POST https://api.bota.dev/v1/devices/dev_01HABC.../unbind \
-  -H "Authorization: Bearer sk_live_..."
-
-# 2. Bind to new user
-curl -X POST https://api.bota.dev/v1/devices/dev_01HABC.../bind \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{ "end_user_id": "eu_01HNEW..." }'
-```
-
-Unbind rotates the token, so the old `dtok_*` stops working immediately. The new bind returns a fresh token to provision onto the device.
-
-## Gotchas
-
-**`device_token` shown only once** — If you lose it, unbind and rebind to generate a new one. There is no way to retrieve the existing token.
-
-**`external_id` is optional but strongly recommended** — Map your user/device IDs to Bota IDs so you never need to store both and can look up resources without a Bota-specific ID.
-
-**Idempotent registration** — Use the `Idempotency-Key` header if your mobile app might retry:
-```bash
--H "Idempotency-Key: register-PIN-2024-001234"
-```
-
-**Device tokens have limited scope** — A `dtok_*` can only create recordings, get upload URLs, and report device status. It cannot list end users, manage webhooks, or access other devices.
-
-**BLE-only devices don't need a `dtok_*`** — Bota Pin (BLE-only) uploads via your mobile app using an upload token (`up_*`). The `dtok_*` is for 4G-enabled devices that upload directly without a phone.
-
-## Reference
-
-- [Register Device](https://docs.bota.dev/api-reference/devices/create)
-- [Bind Device](https://docs.bota.dev/api-reference/devices/bind)
-- [Unbind Device](https://docs.bota.dev/api-reference/devices/unbind)
-- [Device Management Guide](https://docs.bota.dev/guides/device-management)
-- [Authentication — Device Tokens](https://docs.bota.dev/authentication#device-tokens)
+Source contracts do not prove live deployment, physical provisioning or
+package publication. Do not install the fictional `@bota.dev/node` package.

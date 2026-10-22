@@ -1,236 +1,115 @@
 # Skill: Streaming Upload
 
-## Purpose
+## When to use
 
-Upload audio chunks to Bota while recording is still in progress. By the time recording ends, most audio is already in the cloud — reducing time-to-transcript from "recording + upload + processing" to "recording + ~2 minutes."
+Use when maintaining the **legacy HTTP chunk-upload compatibility protocol**
+for an already authorized deployment/device. This is not partial transcription,
+durable cross-network resume or encrypted-upload-v2 acceptance. Keep a full
+independently recoverable source until final verification.
 
-## When to Use
+New App SDK physical-device acceptance remains encrypted-upload-v2 only. Do
+not bypass `encrypted_upload_v2_required`, substitute legacy completion for a
+signed receipt, or erase unknown uploads/journals. Ordinary `bota.stream.v1`
+WebSocket and default-disabled protected streaming are separate protocols.
 
-- Recordings longer than 30 minutes (medical consultations, depositions, long meetings)
-- 4G or WiFi-enabled devices recording in the field
-- When the end user needs their transcript ready as quickly as possible after recording ends
-- BLE devices where the phone stays nearby throughout the recording
+## Compatibility sequence
 
-## Prerequisites
+| Step | Exact HTTP contract |
+| --- | --- |
+| Create | `POST /v1/recordings` with `streaming: true`; not `upload_type` |
+| Destination | `POST /v1/recordings/{id}/chunks/{chunk_number}/upload-url`; **one-based** sequence |
+| Upload | PUT that complete chunk to its signed destination; no project bearer |
+| Finalize | `POST /v1/recordings/{id}/finalize` with `total_chunks` and full-file `content_sha256` |
 
-- A recording created with `upload_type: "streaming"`
-- A connectivity path: WiFi, 4G, Wi-Fi Direct, or BLE via the React Native SDK
-- For BLE path: `@bota.dev/react-native-sdk` installed in your mobile app
+There is no per-chunk `/upload-complete` step. Arrival may be out of order;
+assembly never skips a sequence. Preserve chunk identity and recording pointers.
+Do not recreate a recording to escape an uncertain response.
 
-## How It Works
+Use server `BOTA_API_KEY`, or the device's activated token inside its device
+integration. Never give project keys to devices/mobile apps or models.
+Restricted keys require `recordings:write`; ownership/upload policy still apply.
 
-The device uses **double buffering** — recording into one buffer while the previous buffer uploads:
+## Server HTTP example
 
-```
-Record → Buffer A fills → swap → upload Buffer A → Record → Buffer B fills → swap → ...
-                                                                         → finalize
-```
+The caller already owns the recording, immutable completed chunks and final
+manifest. Credentials are environment-held; loading this guide is not
+authorization to perform these mutations.
 
-**Backend steps:**
+```javascript
+const api = 'https://api.bota.dev/v1';
+const key = process.env.BOTA_API_KEY;
+if (!key) throw new Error('BOTA_API_KEY is required');
 
-```
-POST /v1/recordings (upload_type: streaming)  ← create before recording starts
-  ↓ (upload chunks as they complete)
-POST /v1/recordings/:id/upload-url            ← one per chunk, with chunk_index
-PUT  <presigned-url>                          ← upload each chunk to S3
-POST /v1/recordings/:id/upload-complete       ← mark each chunk uploaded
-  ↓ (after recording ends)
-POST /v1/recordings/:id/finalize              ← stitch all chunks → trigger processing
-```
-
-## Implementation
-
-### Step 1 — Create the Recording (before recording starts)
-
-```bash
-curl -X POST https://api.bota.dev/v1/recordings \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "end_user_id": "eu_01HXYZ...",
-    "device_id": "dev_01HABC...",
-    "upload_type": "streaming",
-    "recorded_at": "2025-01-15T09:00:00Z"
-  }'
-```
-
-```json
-{
-  "id": "rec_01HDEF...",
-  "status": "created",
-  "upload_type": "streaming"
-}
-```
-
-### Step 2 — Upload Each Chunk
-
-For each completed chunk (repeat as chunks arrive):
-
-```bash
-# Get upload URL for chunk N
-curl -X POST https://api.bota.dev/v1/recordings/rec_01HDEF.../upload-url \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content_type": "audio/ogg",
-    "chunk_index": 0
-  }'
-```
-
-```json
-{
-  "upload_url": "https://bota-uploads.s3.amazonaws.com/rec_01HDEF.../chunk-0.ogg?...",
-  "expires_at": "2025-01-15T09:20:00Z"
-}
-```
-
-```bash
-# Upload the chunk to S3
-curl -X PUT "<upload_url>" \
-  -H "Content-Type: audio/ogg" \
-  --data-binary @chunk-0.ogg
-
-# Mark chunk as uploaded
-curl -X POST https://api.bota.dev/v1/recordings/rec_01HDEF.../upload-complete \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{ "chunk_index": 0 }'
-```
-
-Increment `chunk_index` for each chunk (0, 1, 2, ...).
-
-### Step 3 — Finalize After Recording Ends
-
-```bash
-curl -X POST https://api.bota.dev/v1/recordings/rec_01HDEF.../finalize \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{ "total_chunks": 12 }'
-```
-
-```json
-{
-  "id": "rec_01HDEF...",
-  "status": "uploaded",
-  "total_chunks": 12,
-  "missing_chunks": []
-}
-```
-
-If `missing_chunks` is non-empty, re-upload those specific chunks and call finalize again.
-
-### TypeScript (Backend — Managing Chunks)
-
-```typescript
-import Bota from "@bota.dev/node";
-
-const bota = new Bota({ apiKey: process.env.BOTA_API_KEY! });
-
-class StreamingUploadSession {
-  private chunkIndex = 0;
-
-  constructor(private readonly recordingId: string) {}
-
-  async uploadChunk(audioBuffer: Buffer): Promise<void> {
-    const index = this.chunkIndex++;
-
-    const { upload_url } = await bota.recordings.getUploadUrl(this.recordingId, {
-      content_type: "audio/ogg",
-      chunk_index: index,
-    });
-
-    // Upload directly to S3
-    await fetch(upload_url, {
-      method: "PUT",
-      headers: { "Content-Type": "audio/ogg" },
-      body: audioBuffer,
-    });
-
-    await bota.recordings.completeChunkUpload(this.recordingId, { chunk_index: index });
-  }
-
-  async finalize(): Promise<void> {
-    const result = await bota.recordings.finalize(this.recordingId, {
-      total_chunks: this.chunkIndex,
-    });
-
-    if (result.missing_chunks.length > 0) {
-      throw new Error(`Missing chunks: ${result.missing_chunks.join(", ")} — re-upload and retry`);
-    }
-  }
-}
-
-// Usage
-app.post("/api/recordings/start-streaming", async (req, res) => {
-  const { endUserId, deviceId } = req.body;
-
-  const recording = await bota.recordings.create({
-    end_user_id: endUserId,
-    device_id: deviceId,
-    upload_type: "streaming",
-    recorded_at: new Date().toISOString(),
+async function post(path, body) {
+  return fetch(api + path, {
+    method: 'POST', redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.timeout(30_000),
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
+}
 
-  // Return recording ID — the device/app will use it for chunk uploads
-  res.json({ recording_id: recording.id });
-});
+async function putChunk(recordingId, chunkNumber, bytes) {
+  if (!Number.isSafeInteger(chunkNumber) || chunkNumber < 1) throw new Error('Invalid chunk sequence');
+  const response = await post(`/recordings/${encodeURIComponent(recordingId)}/chunks/${chunkNumber}/upload-url`, {});
+  if (!response.ok) throw new Error(`Chunk destination failed (${response.status})`);
+  const { upload_url } = await response.json();
+  assertAllowedUploadDestination(upload_url);
+  const uploaded = await fetch(upload_url, {
+    method: 'PUT', redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.timeout(30_000), body: bytes,
+  });
+  if (!uploaded.ok) throw new Error(`Chunk PUT failed (${uploaded.status})`);
+}
+
+async function submitFinalManifest(recordingId, manifest) {
+  // Persist the manifest first; never change it during 425 recovery.
+  if (!manifest || !Number.isSafeInteger(manifest.total_chunks) ||
+      manifest.total_chunks < 1 || manifest.total_chunks > 10000 ||
+      typeof manifest.content_sha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(manifest.content_sha256)) {
+    throw new Error('A bounded chunk count and full-file SHA-256 are required');
+  }
+  const response = await post(`/recordings/${encodeURIComponent(recordingId)}/finalize`, manifest);
+  if (response.status === 425) return { state: 'verification_pending' };
+  if (response.status !== 200) throw new Error(`Finalization failed (${response.status})`);
+  return { state: 'verified', recordingId };
+}
 ```
 
-### React Native SDK (BLE Streaming)
+`assertAllowedUploadDestination` is application-owned policy. The final manifest
+contains positive `total_chunks` (at most 10000), lowercase full-file SHA-256,
+and optionally `final_duration_ms`, `final_file_size_bytes`, and bounded
+`trailer_base64` for actual encoder closing bytes. Reported expected size alone
+is not integrity proof; never manufacture/repair trailer bytes.
 
-For BLE devices, the SDK manages the streaming transparently:
+## Completion and repair
 
-```typescript
-import { BotaDevice } from "@bota.dev/react-native-sdk";
+- `425 upload_verification_pending`: retain sources; retry the identical final
+  manifest with bounded backoff. Stop at the caller's deadline.
+- `409 upload_chunks_missing`: inspect inclusive `{start,end}` sequences in
+  `error.missing_ranges`. Explicitly authorized repair can upload those exact
+  chunks, then retry the unchanged manifest.
+- Integrity failure/unknown response: retain source/pointers and inspect state.
+  Do not automatically recreate, re-upload everything, switch protocols or
+  delete local data.
+- `200`: ordered audio is published and a supplied full-file hash is verified.
+  A notification alone does not supply a device cleanup receipt.
 
-// The SDK handles chunking, buffering, and re-upload automatically
-const session = await BotaDevice.startStreamingSync({
-  deviceId: "dev_01HABC...",
-  recordingId: "rec_01HDEF...",  // created by your backend
-  uploadTokenEndpoint: "/api/recordings/upload-token",  // your backend issues upload tokens
-  chunkDurationSeconds: 300,  // 5-minute chunks
-});
+S3 PUT is not byte-offset resume. A network switch does not prove partial
+progress reusable. URL lifetime comes from its response; chunk URLs currently
+report `expires_in: 900`. Processing starts after accepted assembly, not after
+each chunk. No fixed time-to-transcript is promised.
 
-// SDK fires callbacks as chunks upload
-session.onChunkUploaded(({ chunkIndex, totalUploaded }) => {
-  console.log(`Chunk ${chunkIndex} uploaded`);
-});
+Retired `@bota.dev/react-native-sdk` examples and invented
+`BotaDevice.startStreamingSync`/API SDK chunk helpers are not this contract.
 
-session.onComplete(() => {
-  // SDK has called finalize — recording is processing
-});
-```
+## Contract references
 
-## Chunk Size
+- [Pinned recording routes](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/routes/v1/recordings/index.ts) and [inputs](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/routes/v1/recordings/validation.ts)
+- [Streaming/recovery](https://docs.bota.dev/guides/streaming-upload), [finalization](https://docs.bota.dev/api-reference/recordings/finalize-streaming)
+- [Encrypted-v2](https://docs.bota.dev/api-reference/uploads/encrypted-v2), [protected streaming](https://docs.bota.dev/api-reference/uploads/protected-streaming)
+- [API SDK cohort](https://github.com/bota-dev/api-sdk/blob/3546bc71da16885f664aaa7d057e5baddc0ba13b/packages/typescript/README.md)
 
-| Chunk Duration | File Size (Opus 32kbps) | Recommendation |
-|----------------|-------------------------|----------------|
-| 1 minute | ~250 KB | Maximum real-time feedback |
-| **5 minutes** | **~1.25 MB** | **Recommended default** |
-| 10 minutes | ~2.5 MB | Fewer round trips |
-| 15 minutes | ~3.75 MB | Very long recordings only |
-
-## Gotchas
-
-**Create the recording before recording starts, not after.** The recording ID must be established before any chunks can be associated with it.
-
-**`chunk_index` must be zero-based and contiguous.** Bota stitches chunks in order. Gaps are detected at finalize time and reported as `missing_chunks`.
-
-**Finalize is idempotent with the same `total_chunks`.** Safe to retry if your network drops during the finalize call.
-
-**Missing chunks at finalize don't fail immediately.** The response includes a `missing_chunks` array. Upload the missing chunks (by index) and call finalize again.
-
-**Network switches mid-upload are safe.** S3 presigned URLs support HTTP range requests, so a chunk upload interrupted by a network switch can resume from the byte offset where it stopped.
-
-**BLE streaming is an optimization, not a requirement.** If Bluetooth disconnects mid-recording, the device continues recording to its SD card and can batch-sync later. The streaming session simply stops, and finalize can be called after a subsequent batch sync fills the missing chunks.
-
-**Chunk upload URLs expire in 15 minutes.** Fetch a new URL for each chunk close to when you're ready to upload it.
-
-## Reference
-
-- [Streaming Upload Guide](https://docs.bota.dev/guides/streaming-upload)
-- [Create Recording](https://docs.bota.dev/api-reference/recordings/create)
-- [Get Upload URL](https://docs.bota.dev/api-reference/uploads/create-url)
-- [Finalize Recording](https://docs.bota.dev/api-reference/recordings/finalize-streaming)
-- [Connectivity Guide](https://docs.bota.dev/guides/connectivity) — WiFi, cellular, BLE paths
-- [Recording Upload Skill](../recording-upload/skill.md) — standard (non-streaming) upload
+Live device/firmware/S3 acceptance and optional protocol enablement remain
+separate from this source contract.

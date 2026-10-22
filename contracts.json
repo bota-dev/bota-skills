@@ -1,0 +1,178 @@
+{
+  "format_version": 1,
+  "scope": "public HTTP operation identities only; no schema or deployed-support certification",
+  "source": {
+    "repository": "bota-dev/docs",
+    "commit": "1387b44c92e877a72d5cbb460d2261aca6987103",
+    "path": "api-reference/openapi.json",
+    "sha256": "f6a8e473c35a220177ad60801fc0f7756d219589203cef50733658ccd6050d90"
+  },
+  "operations": [
+    {
+      "method": "DELETE",
+      "path": "/end-users/{id}/user-token",
+      "operationId": "deleteEndUsersByIdUserToken"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/identity",
+      "operationId": "getAuthIdentity"
+    },
+    {
+      "method": "GET",
+      "path": "/config/processing",
+      "operationId": "getConfigProcessing"
+    },
+    {
+      "method": "GET",
+      "path": "/devices",
+      "operationId": "getDevices"
+    },
+    {
+      "method": "GET",
+      "path": "/devices/{id}",
+      "operationId": "getDevicesById"
+    },
+    {
+      "method": "GET",
+      "path": "/devices/{id}/config/processing",
+      "operationId": "getDevicesByIdConfigBySection",
+      "sourcePath": "/devices/{id}/config/{section}",
+      "literalParameters": {
+        "section": "processing"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/end-users",
+      "operationId": "getEndUsers"
+    },
+    {
+      "method": "GET",
+      "path": "/end-users/{id}",
+      "operationId": "getEndUsersById"
+    },
+    {
+      "method": "GET",
+      "path": "/end-users/{id}/config/processing",
+      "operationId": "getEndUsersByIdConfigBySection",
+      "sourcePath": "/end-users/{id}/config/{section}",
+      "literalParameters": {
+        "section": "processing"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/recordings",
+      "operationId": "getRecordings"
+    },
+    {
+      "method": "GET",
+      "path": "/recordings/{id}",
+      "operationId": "getRecordingsById"
+    },
+    {
+      "method": "GET",
+      "path": "/summaries",
+      "operationId": "getSummaries"
+    },
+    {
+      "method": "GET",
+      "path": "/summaries/{id}",
+      "operationId": "getSummariesById"
+    },
+    {
+      "method": "GET",
+      "path": "/transcriptions",
+      "operationId": "getTranscriptions"
+    },
+    {
+      "method": "GET",
+      "path": "/transcriptions/{id}",
+      "operationId": "getTranscriptionsById"
+    },
+    {
+      "method": "PATCH",
+      "path": "/end-users/{id}",
+      "operationId": "patchEndUsersById"
+    },
+    {
+      "method": "POST",
+      "path": "/devices",
+      "operationId": "postDevices"
+    },
+    {
+      "method": "POST",
+      "path": "/devices/{id}/bind",
+      "operationId": "postDevicesByIdBind"
+    },
+    {
+      "method": "POST",
+      "path": "/devices/{id}/bind/{bindingAttemptId}/abort",
+      "operationId": "postDevicesByIdBindByBindingAttemptIdAbort"
+    },
+    {
+      "method": "POST",
+      "path": "/devices/{id}/bind/{bindingAttemptId}/confirm",
+      "operationId": "postDevicesByIdBindByBindingAttemptIdConfirm"
+    },
+    {
+      "method": "POST",
+      "path": "/end-users",
+      "operationId": "postEndUsers"
+    },
+    {
+      "method": "POST",
+      "path": "/end-users/{id}/user-token",
+      "operationId": "postEndUsersByIdUserToken"
+    },
+    {
+      "method": "POST",
+      "path": "/recordings",
+      "operationId": "postRecordings"
+    },
+    {
+      "method": "POST",
+      "path": "/recordings/{id}/chunks/{chunk_number}/upload-url",
+      "operationId": "postRecordingsByIdChunksByChunkNumberUploadUrl"
+    },
+    {
+      "method": "POST",
+      "path": "/recordings/{id}/finalize",
+      "operationId": "postRecordingsByIdFinalize"
+    },
+    {
+      "method": "POST",
+      "path": "/recordings/{id}/upload-complete",
+      "operationId": "postRecordingsByIdUploadComplete"
+    },
+    {
+      "method": "POST",
+      "path": "/recordings/{id}/upload-url",
+      "operationId": "postRecordingsByIdUploadUrl"
+    },
+    {
+      "method": "PUT",
+      "path": "/config/processing",
+      "operationId": "putConfigProcessing"
+    },
+    {
+      "method": "PUT",
+      "path": "/devices/{id}/config/processing",
+      "operationId": "putDevicesByIdConfigBySection",
+      "sourcePath": "/devices/{id}/config/{section}",
+      "literalParameters": {
+        "section": "processing"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/end-users/{id}/config/processing",
+      "operationId": "putEndUsersByIdConfigBySection",
+      "sourcePath": "/end-users/{id}/config/{section}",
+      "literalParameters": {
+        "section": "processing"
+      }
+    }
+  ]
+}

@@ -1,191 +1,108 @@
 # Skill: Recording Upload
 
-## Purpose
+## When to use
 
-Upload an audio recording from a Bota device to the cloud so it can be transcribed and summarized.
+Use for an ordinary **server-owned audio import**: create a recording, request
+a destination, PUT the complete file, then obtain verified server completion.
+Physical App SDK capture uses **encrypted-upload-v2** with exact capture
+identity, ciphertext integrity, cloud verification, signed completion receipt
+and receipt-gated device cleanup. This ordinary flow cannot qualify it.
 
-## When to Use
+Route device integrations to [encrypted-v2](https://docs.bota.dev/api-reference/uploads/encrypted-v2)
+and the supported [App SDK](https://docs.bota.dev/api-reference/client-sdks).
+Do not downgrade `v2_required` policy or modify retained device bytes/journals.
 
-- A BLE device finishes recording and transfers audio to your mobile app via Bluetooth
-- Your backend needs to upload audio on behalf of a user
-- You want to test the pipeline with a pre-recorded audio file
+## Server workflow
 
-## Prerequisites
+1. Obtain application authorization to import the file. Supply the project
+   key through server `BOTA_API_KEY`; restricted-key writes require
+   `recordings:write`. Never give that key to mobile/browser code or a model.
+2. Persist import intent and its resulting recording ID. Create with
+   `source: "api_upload"`, `upload_method: "import"`, optional name/end-user
+   mapping and `recorded_at`. Ordinary creation does not take
+   `duration_seconds`. Do not manufacture device capture UUID/generation for
+   an imported file.
+3. Request `/recordings/{id}/upload-url` with actual `content_type` and optional
+   `file_size_bytes`. Read `upload_url`, `upload_token`, `expires_in` and returned
+   `content_type`; do not invent `expires_at` or assume a 15-minute lifetime.
+4. PUT the complete unchanged bytes using the returned content type. Attach no
+   project Authorization header to S3. Signed URLs/upload tokens are credentials;
+   do not log them or paste them into prompts. Refuse redirects.
+5. Only after PUT success, submit `/recordings/{id}/upload-complete` with exact
+   byte count and lowercase full-file SHA-256. Optional duration is an integer
+   in seconds. `200` confirms completion; `425 upload_verification_pending`
+   retains the original source and exact evidence.
+6. Retry only identical completion evidence with bounded backoff while
+   verification is pending, or reconcile after ambiguous completion. Do not
+   recreate the recording or replay create/PUT blindly. Investigate `409
+   upload_integrity_failed`; an explicit repair can obtain a fresh destination
+   and PUT the complete original file. Preserve source on failure.
 
-- A Bota secret key (`sk_live_*` or `sk_test_*`) — for your backend
-- An end user (`eu_*`) and bound device (`dev_*`) already created
-- The audio file — Bota accepts Opus, MP3, WAV, M4A, FLAC, WebM
+`uploaded` is not processing completion. Auto-processing is a best-effort
+subsequent attempt. A webhook alone is not a device-delete receipt.
 
-## How It Works
+## Server HTTP example
 
-```
-Device (records audio)
-  → Mobile App (receives audio over BLE)
-    → Your Backend
-      → POST /v1/recordings          (create the record)
-      → POST /v1/recordings/:id/upload-url  (get presigned S3 URL)
-    → Mobile App
-      → PUT <presigned-url>           (upload directly to S3)
-    → Your Backend
-      → POST /v1/recordings/:id/upload-complete  (trigger processing)
-```
+This helper assumes an existing, durably recorded import ID and a buffered
+file under your application's memory limit. The caller owns file acquisition,
+intent persistence, destination policy and reconciliation. Each step is
+attempted once, with no automatic mutation retry.
 
-Your app uploads directly to S3 — audio never passes through your backend. The backend only handles the metadata and signed URL.
+```javascript
+import { createHash } from 'node:crypto';
 
-## Implementation
+const api = 'https://api.bota.dev/v1';
+const key = process.env.BOTA_API_KEY;
+if (!key) throw new Error('BOTA_API_KEY is required');
 
-### Step 1 — Create the Recording Record
-
-```bash
-curl -X POST https://api.bota.dev/v1/recordings \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "end_user_id": "eu_01HXYZ...",
-    "device_id": "dev_01HABC...",
-    "duration_seconds": 3600,
-    "recorded_at": "2025-01-15T09:00:00Z"
-  }'
-```
-
-```json
-{
-  "id": "rec_01HDEF...",
-  "end_user_id": "eu_01HXYZ...",
-  "device_id": "dev_01HABC...",
-  "status": "created",
-  "duration_seconds": 3600,
-  "recorded_at": "2025-01-15T09:00:00Z",
-  "created_at": "2025-01-15T10:05:00Z"
-}
-```
-
-### Step 2 — Get the Presigned Upload URL
-
-```bash
-curl -X POST https://api.bota.dev/v1/recordings/rec_01HDEF.../upload-url \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content_type": "audio/ogg"
-  }'
-```
-
-```json
-{
-  "upload_url": "https://bota-uploads.s3.amazonaws.com/rec_01HDEF.../audio.ogg?X-Amz-...",
-  "expires_at": "2025-01-15T10:20:00Z"
-}
-```
-
-The URL expires in 15 minutes. Get it close to when you're ready to upload.
-
-### Step 3 — Upload Directly to S3
-
-```bash
-curl -X PUT "<upload_url>" \
-  -H "Content-Type: audio/ogg" \
-  --data-binary @/path/to/recording.ogg
-```
-
-Use the exact `Content-Type` you specified in Step 2. No `Authorization` header — the URL is self-authenticating.
-
-### Step 4 — Complete the Upload
-
-```bash
-curl -X POST https://api.bota.dev/v1/recordings/rec_01HDEF.../upload-complete \
-  -H "Authorization: Bearer sk_live_..."
-```
-
-```json
-{
-  "id": "rec_01HDEF...",
-  "status": "uploaded",
-  "uploaded_at": "2025-01-15T10:06:00Z"
-}
-```
-
-This signals Bota that the file is ready. If auto-processing is enabled, transcription starts immediately.
-
-### TypeScript (Express backend + React Native app)
-
-**Backend — generate upload URL:**
-
-```typescript
-import Bota from "@bota.dev/node";
-
-const bota = new Bota({ apiKey: process.env.BOTA_API_KEY! });
-
-app.post("/api/recordings/start", async (req, res) => {
-  const { endUserId, deviceId, durationSeconds } = req.body;
-
-  const recording = await bota.recordings.create({
-    end_user_id: endUserId,
-    device_id: deviceId,
-    duration_seconds: durationSeconds,
-    recorded_at: new Date().toISOString(),
+async function post(path, body) {
+  return fetch(api + path, {
+    method: 'POST', redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.timeout(30_000),
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
+}
 
-  const { upload_url } = await bota.recordings.getUploadUrl(recording.id, {
-    content_type: "audio/ogg",
+async function uploadExistingImport(recordingId, bytes, contentType) {
+  const path = `/recordings/${encodeURIComponent(recordingId)}`;
+  const issued = await post(path + '/upload-url', {
+    content_type: contentType, file_size_bytes: bytes.length,
   });
-
-  res.json({ recording_id: recording.id, upload_url });
-});
-
-app.post("/api/recordings/:id/complete", async (req, res) => {
-  const recording = await bota.recordings.completeUpload(req.params.id);
-  res.json({ status: recording.status });
-});
-```
-
-**React Native app — upload audio:**
-
-```typescript
-// After BLE transfer completes
-async function uploadRecording(audioPath: string, endUserId: string, deviceId: string) {
-  // 1. Get upload URL from your backend
-  const { recording_id, upload_url } = await fetch("/api/recordings/start", {
-    method: "POST",
-    body: JSON.stringify({ endUserId, deviceId, durationSeconds: 3600 }),
-  }).then(r => r.json());
-
-  // 2. Upload directly to S3
-  const audio = await fetch(`file://${audioPath}`);
-  const blob = await audio.blob();
-
-  await fetch(upload_url, {
-    method: "PUT",
-    headers: { "Content-Type": "audio/ogg" },
-    body: blob,
+  if (!issued.ok) throw new Error(`Destination request failed (${issued.status})`);
+  const destination = await issued.json();
+  assertAllowedUploadDestination(destination.upload_url);
+  const uploaded = await fetch(destination.upload_url, {
+    method: 'PUT', redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.timeout(30_000),
+    headers: { 'Content-Type': destination.content_type }, body: bytes,
   });
-
-  // 3. Complete via your backend
-  await fetch(`/api/recordings/${recording_id}/complete`, { method: "POST" });
+  if (!uploaded.ok) throw new Error(`Upload failed (${uploaded.status})`);
+  const evidence = {
+    file_size_bytes: bytes.length,
+    content_sha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+  await saveCompletionEvidence(recordingId, evidence);
+  const completed = await post(path + '/upload-complete', evidence);
+  if (completed.status === 425) return { state: 'verification_pending' };
+  if (completed.status !== 200) throw new Error(`Completion failed (${completed.status})`);
+  return { state: 'completed', recordingId };
 }
 ```
 
-## Gotchas
+`assertAllowedUploadDestination` and `saveCompletionEvidence` are explicit
+application-owned policy/durability integration points. An exception after
+submission can mean an unknown outcome; do not log fetch errors containing a
+signed URL. `Idempotency-Key` is not required for exact recording-scoped
+completion replay; conflicting stored size/duration/hash returns 409.
 
-**S3 upload uses the presigned URL directly — no Authorization header.** Adding one will break the request (S3 rejects requests with both a presigned token and an Authorization header).
+The API SDK candidate has no recording-create/upload methods. Use server HTTP
+instead of fictional `getUploadUrl`/`completeUpload` SDK calls.
 
-**`Content-Type` must match exactly.** Specify it in `POST /upload-url` and use the same value in the `PUT` to S3. Mismatches cause S3 to reject the upload.
+## Contract references
 
-**Complete the upload even if you plan to process manually.** The `upload-complete` call changes the recording status to `uploaded`. Without it, auto-processing won't trigger and the recording stays in `created` status.
+- [Pinned recording inputs](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/routes/v1/recordings/validation.ts)
+- [Create](https://docs.bota.dev/api-reference/recordings/create), [destination](https://docs.bota.dev/api-reference/uploads/create-url), [completion/recovery](https://docs.bota.dev/api-reference/uploads/complete)
+- [API SDK cohort](https://github.com/bota-dev/api-sdk/blob/3546bc71da16885f664aaa7d057e5baddc0ba13b/packages/typescript/README.md)
 
-**Presigned URLs expire in 15 minutes.** Don't fetch the URL on app open and cache it — fetch it right before the upload.
-
-**Duration is informational.** If you don't know the exact duration before upload, omit `duration_seconds` and Bota will measure it during transcription.
-
-**Idempotency for retries.** If your mobile app might retry the `upload-complete` call on network failure, use `Idempotency-Key`:
-```bash
--H "Idempotency-Key: complete-rec_01HDEF..."
-```
-
-## Reference
-
-- [Create Recording](https://docs.bota.dev/api-reference/recordings/create)
-- [Get Upload URL](https://docs.bota.dev/api-reference/uploads/create-url)
-- [Complete Upload](https://docs.bota.dev/api-reference/uploads/complete)
-- [Streaming Upload Skill](../streaming-upload/skill.md) — for long recordings
-- [Auto-Processing Skill](../auto-processing/skill.md) — process automatically after upload
+These examples do not prove live S3/backend or physical encrypted-v2 acceptance.

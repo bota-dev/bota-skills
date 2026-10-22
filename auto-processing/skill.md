@@ -1,196 +1,107 @@
 # Skill: Auto-Processing
 
-## Purpose
+## When to use
 
-Enable Bota's zero-code transcription and summary pipeline. Once configured, every uploaded recording is automatically transcribed and summarized — no manual API calls needed.
+Use to inspect or explicitly configure best-effort transcription after verified
+audio becomes available and optional summary after successful transcription.
+Configuration is intent, not proof of provider admission, job creation,
+enqueue success or completed output.
 
-## When to Use
+## Authority and configuration
 
-- You want transcripts and summaries without calling `/v1/transcriptions` and `/v1/summaries` yourself
-- All recordings in a project (or for a specific end user) should use the same processing config
-- You want to reduce webhook handler complexity by receiving results instead of triggering jobs
+Supply a server project key through `BOTA_API_KEY`. Restricted keys need
+`config:read` for inspection and `config:write` for changes. Provider management
+and processing jobs have their own scopes/admission rules. Keep credentials
+out of URLs, logs, client bundles and model context. Loading this guide does
+not authorize configuration writes or paid jobs.
 
-## How It Works
+Inspect effective configuration before changes; retain previous values and
+target level. Settings deep-merge through organization → project → end user →
+device. Only supplied properties override broader intent.
 
-```
-upload-complete
-  → Bota detects auto_transcription: true
-  → Creates transcription job automatically
-  → Fires transcription.completed webhook
-  → Detects auto_summary: true
-  → Creates summary job automatically
-  → Fires summary.completed webhook
-```
+| Level | Processing section |
+| --- | --- |
+| Authenticated project | `/v1/config/processing` |
+| End user | `/v1/end-users/{id}/config/processing` |
+| Device | `/v1/devices/{id}/config/processing` |
 
-You configure the pipeline once at the project level (or override per end user or device). After that, just upload and wait for webhooks.
-
-## Configuration Hierarchy
-
-Settings cascade from broad to narrow, with narrower settings taking precedence:
-
-```
-Organization
-  └── Project          ← set once for all users
-        └── EndUser    ← override per user if needed
-              └── Device  ← override per device if needed
-```
-
-Most integrations only configure at the project level.
-
-## Implementation
-
-### Enable Auto-Processing at Project Level
-
-```bash
-curl -X PUT https://api.bota.dev/v1/projects/config/processing \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "auto_transcription": true,
-    "auto_summary": true,
-    "summary_template_id": "tmpl_general_notes",
-    "transcription": {
-      "language": "en",
-      "speaker_diarization": true
-    }
-  }'
-```
-
-After this, every `upload-complete` call in your project triggers transcription and summary automatically.
-
-### Summary Templates
-
-| Template ID | Name | Output Fields |
-|-------------|------|---------------|
-| `tmpl_general_notes` | General Notes | key_points, action_items, participants, decisions, overview |
-| `tmpl_sales_call` | Sales Call | pain_points, budget, timeline, next_steps, key_quotes, sentiment |
-| `tmpl_clinical_soap` | Clinical SOAP | chief_complaint, subjective, objective, assessment, plan |
-| `tmpl_legal_memo` | Legal Memo | facts, issues, analysis, conclusion, parties_involved |
-
-### Override for a Specific End User
-
-```bash
-curl -X PUT https://api.bota.dev/v1/end-users/eu_01HXYZ.../config/processing \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "summary_template_id": "tmpl_clinical_soap"
-  }'
-```
-
-This user gets the SOAP template; all others get the project default.
-
-### Manual Transcription (without auto-processing)
-
-If you prefer explicit control, call `/v1/transcriptions` after upload:
-
-```bash
-curl -X POST https://api.bota.dev/v1/transcriptions \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "recording_id": "rec_01HDEF...",
-    "language": "en",
-    "speaker_diarization": true
-  }'
-```
+Use GET to inspect and PUT for an explicit change. There is no
+`/v1/projects/config/processing`. The section uses nested objects:
 
 ```json
 {
-  "id": "txn_01HJKL...",
-  "recording_id": "rec_01HDEF...",
-  "status": "processing"
+  "auto_transcription": { "enabled": true },
+  "auto_summary": { "enabled": true, "template": "general_notes" }
 }
 ```
 
-Then wait for the `transcription.completed` webhook.
+Optional `provider` is inside its corresponding object. Select a configured
+ASR/LLM provider and existing template name. Flat booleans and
+`summary_template_id` are not this schema. Never put provider keys in config;
+use Platform or supported secure integration input with explicit authority.
 
-### Manual Summary (after transcription)
+## Inspect first, then apply an authorized patch
 
-```bash
-curl -X POST https://api.bota.dev/v1/summaries \
-  -H "Authorization: Bearer sk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transcription_id": "txn_01HJKL...",
-    "template_id": "tmpl_sales_call"
-  }'
-```
+GET and PUT are deliberately separate; no write runs on import/startup, and
+no failed mutation is automatically replayed. Choose the target and patch first.
 
-Or with a custom prompt instead of a template:
+```javascript
+const api = 'https://api.bota.dev/v1';
+const key = process.env.BOTA_API_KEY;
+if (!key) throw new Error('BOTA_API_KEY is required');
 
-```bash
--d '{
-  "transcription_id": "txn_01HJKL...",
-  "prompt": "Summarize the key decisions made and who is responsible for each action item."
-}'
-```
-
-### TypeScript — Receiving Auto-Processing Results
-
-```typescript
-// Your webhook handler receives results automatically
-app.post("/webhooks/bota", express.raw({ type: "application/json" }), (req, res) => {
-  // Verify signature first (see webhook-handling skill)
-
-  const event = JSON.parse(req.body.toString());
-  res.status(200).json({ received: true });
-
-  if (event.event === "summary.completed") {
-    const { summary_id, recording_id, end_user_id } = event.data;
-
-    // Fetch the summary content
-    bota.summaries.get(summary_id).then(summary => {
-      // summary.content contains the structured output
-      // e.g. summary.content.key_points, summary.content.action_items
-      saveSummaryToYourSystem(end_user_id, recording_id, summary.content);
-    });
-  }
-});
-```
-
-### TypeScript — Full Setup (one-time)
-
-```typescript
-import Bota from "@bota.dev/node";
-
-const bota = new Bota({ apiKey: process.env.BOTA_API_KEY! });
-
-// Run once during your app's bootstrap / deployment
-async function configurePipeline() {
-  await bota.projects.updateProcessingConfig({
-    auto_transcription: true,
-    auto_summary: true,
-    summary_template_id: "tmpl_general_notes",
-    transcription: {
-      language: "en",
-      speaker_diarization: true,
-    },
+async function processingRequest(method, patch) {
+  const response = await fetch(api + '/config/processing', {
+    method, redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.timeout(30_000),
+    headers: { Authorization: `Bearer ${key}`, ...(method === 'PUT' ? { 'Content-Type': 'application/json' } : {}) },
+    ...(method === 'PUT' ? { body: JSON.stringify(patch) } : {}),
   });
+  if (!response.ok) throw new Error(`Processing configuration failed (${response.status})`);
+  return response.json();
+}
 
-  console.log("Auto-processing configured");
+async function inspectProjectProcessing() {
+  return processingRequest('GET');
+}
+async function applyAuthorizedProjectProcessing(patch) {
+  return processingRequest('PUT', patch);
 }
 ```
 
-## Gotchas
+After a lost PUT response, GET current state and compare with saved intent.
+Do not blindly reapply a stale patch over another administrator's update.
+Returned configuration does not prove a job ran.
 
-**Auto-processing triggers on `upload-complete`, not on S3 upload.** You must call `POST /v1/recordings/:id/upload-complete` to signal that the file is ready. Uploading to S3 alone does nothing.
+## Follow actual resources
 
-**Config hierarchy is additive.** A narrower config only overrides fields it explicitly sets. If a project config sets `auto_transcription: true` and `auto_summary: true`, and an end user config sets only `summary_template_id`, the end user inherits `auto_transcription: true` from the project.
+1. Complete audio through its owning verification protocol. Pending verification
+   or integrity failure cannot be bypassed to initiate processing.
+2. If enabled, Bota attempts provider-route authorization, transcription creation
+   and enqueue. Failure is logged without rolling back an already completed
+   upload. No guaranteed transactional outbox retry is promised.
+3. Successful transcription resolves auto-summary configuration again; a later
+   change can affect the provider/template.
+4. Inspect supported resource GETs and signed webhooks for actual job state.
+   If absent, investigate config/provider/credential admission before explicitly
+   requesting a manual job. Never automatically duplicate paid jobs.
 
-**`auto_summary` requires `auto_transcription: true`.** You can't auto-summarize without a transcription.
+An enabled project credential is selected for its provider; otherwise an
+available built-in credential may apply. The selected route must satisfy
+active compliance modes. Failure does not automatically switch providers.
+Review AI output appropriately for clinical/legal decisions.
 
-**Template vs. custom prompt is mutually exclusive.** Use `template_id` or `prompt`, not both.
+Manual `POST /v1/transcriptions` and `POST /v1/summaries` are separate explicit
+operations. The API SDK supports reading these resources, not job creation or
+configuration writes. Do not invent `bota.config` or processing-create methods.
 
-**Processing is asynchronous.** After `upload-complete`, the API returns immediately. The transcription job is queued. Expect the `transcription.completed` webhook within 1–5 minutes depending on recording length.
+## Contract references
 
-**Test mode works the same.** Use `sk_test_*` to test the full pipeline without being billed. Use synthetic or short audio to keep test cycles fast.
+- [Pinned processing schema/merge policy](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/config-schema/definitions/processing.ts)
+- [Pinned project config routes/scopes](https://github.com/bota-dev/bota/blob/2c388b098d4e0d8a4d3893018fed47a870305795/api/src/routes/v1/config/index.ts)
+- [Processing and failure boundaries](https://docs.bota.dev/guides/auto-processing)
+- [Webhook verification](../webhook-handling/skill.md)
+- [API SDK cohort](https://github.com/bota-dev/api-sdk/blob/3546bc71da16885f664aaa7d057e5baddc0ba13b/packages/typescript/README.md)
 
-## Reference
-
-- [Auto-Processing Guide](https://docs.bota.dev/guides/auto-processing) — full pipeline documentation
-- [Hierarchical Config](https://docs.bota.dev/guides/hierarchical-config) — org → project → end_user → device overrides
-- [Transcriptions API](https://docs.bota.dev/api-reference/ai/transcriptions)
-- [Summaries API](https://docs.bota.dev/api-reference/ai/summaries)
-- [Webhook Handling Skill](../webhook-handling/skill.md) — receive processing results
-- [Recording Upload Skill](../recording-upload/skill.md) — upload audio to trigger the pipeline
+These source contracts do not qualify deployed provider credentials, regulated
+routes, a processing pipeline or a completed job.
