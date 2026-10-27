@@ -87,3 +87,17 @@ Bota is a **B2B2C platform** — you are the developer integrating the API; your
 - [Full API reference](https://docs.bota.dev)
 - [llms-full.txt](https://docs.bota.dev/llms-full.txt) — single-document comprehensive reference for AI agents
 - [API Introduction](https://docs.bota.dev/api-reference/introduction)
+
+## Security scanning
+
+The `Semgrep` workflow runs the `Scan` check for every pull request, including
+drafts, forks and changes to any target branch or file path, and for merge-queue
+candidates. It uses the pinned community scanner with read-only repository
+permissions and requires no scanner account or cloud token. Scanner errors and
+findings fail the check.
+
+Manual dispatch accepts an optional full 40-character commit `revision` for a
+retrospective scan. The 90-day scan artifact records the exact scanned source,
+workflow revision, scanner version, rule snapshots, findings and coverage. A
+retrospective result records the new scan date; it does not establish testing
+before the original merge.
