@@ -147,7 +147,7 @@
         "GET /v1/devices",
         "GET /v1/recordings"
       ],
-      "sha256": "e3ab284417bf7067ba8dfb8b94ef79c1129a895db9173bc9d1cce63d99ed409f",
+      "sha256": "ea36cf576ca56b79c44a62752c7c8de5f5e95db4bbc3ce7dd75a9acdd6242480",
       "qualification": "source-reviewed"
     },
     {
@@ -196,7 +196,7 @@
         "POST /v1/end-users/:id/user-token",
         "DELETE /v1/end-users/:id/user-token"
       ],
-      "sha256": "cf960829e6854e2db412073fe303e1e6bdd53bb4d71baaa036d2a44d09f75fea",
+      "sha256": "c6a4befa8441c8358bd6ba36a323289537e050c70ebeb0f90779628e7c2e5526",
       "qualification": "source-reviewed"
     }
   ],
