@@ -7,14 +7,27 @@ MCP process. Use the API SDK for application code and Platform for webhook setup
 
 ## Select the release and credential
 
-The [CLI source contract](https://github.com/bota-dev/bota-cli/blob/5270781b39ff59f7b889c58a288a59f63f50ca46/README.md)
+The [CLI preview guide](https://docs.bota.dev/cli)
 describes an unpublished `0.2.0-beta.0` candidate. A currently installed public
 package need not support its profile, identity, administration or hosted-mode
 commands. Check `bota --version`, matching release notes and `--help` first.
 
 Have your secret manager inject `BOTA_API_KEY` into the process environment. Do
 not put a real key in a command, generated configuration or assistant prompt.
-No-argument browser `auth login` is retired; it is not shared Platform login.
+The legacy browser key-export flow is retired. Without an explicit developer
+deployment, no-argument `auth login` remains configuration off.
+
+The unpublished candidate implements protected Platform enrollment/recovery and
+shared CLI/MCP sessions through fixed `--developer-deployment dev` or
+`--developer-deployment prod` selection and an explicit `--developer-profile`.
+Local MCP requires `--mode hosted` and never starts login itself. These source
+selectors do not establish production activation or real installed acceptance.
+Use only an existing Platform account with active organization owner/admin
+access to the chosen project and explicit read-scope consent. Enrollment is
+self-service within those existing permissions. Account creation remains separate.
+Follow the [CLI guide](https://docs.bota.dev/cli)
+for host requirements and exact named recovery; never invent an issuer or fall
+back from a refused developer profile to an API key.
 
 ## Enroll an explicit environment profile
 

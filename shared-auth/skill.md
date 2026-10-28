@@ -40,15 +40,22 @@ webhook/provider secrets out of logs, prompts and generated source.
 ## Platform login status
 
 The legacy browser key-export flow is retired. No-argument `bota auth login`
-does not enable secure delegated Platform login. Its replacement remains inactive
-pending initial-enrollment recovery, native shared-family storage and live
-browser/TLS/Cognito acceptance. Do not invent an OAuth issuer/client or turn a
-Dashboard JWT into an API token.
+without an explicit developer deployment remains configuration off. The
+unpublished source candidate implements protected enrollment/recovery and
+shared CLI/MCP sessions using fixed `--developer-deployment` selection and an
+explicit `--developer-profile`. Production activation and the real installed
+browser/native journey remain unqualified. Do not invent an OAuth issuer/client
+or turn a Dashboard JWT into an API token.
 
-The target uses the same Platform account with separately consented developer
+The source preview uses the same Platform account with separately consented developer
 grants, short-lived distinct REST/MCP access tokens and rotating refresh families.
 Browser sign-out and developer-session revocation have separate lifecycles.
-Those source contracts do not establish an available login command today.
+Enrollment requires an existing Platform account with active organization
+owner/admin access to an eligible project and explicit scope consent. Enrollment
+is self-service within those existing permissions. Account creation remains separate.
+The published npm `0.1.0` CLI does not provide these preview commands. Follow the
+[CLI guide](https://docs.bota.dev/cli)
+for supported hosts, fixed deployments and named recovery.
 
 ## End-user enrollment and removal
 
@@ -66,5 +73,5 @@ sign-out must not be reported as developer-grant revocation.
 
 References: [authentication](https://docs.bota.dev/authentication),
 [user-token contract](https://docs.bota.dev/api-reference/end-users/user-token),
-[CLI source](https://github.com/bota-dev/bota-cli/blob/5270781b39ff59f7b889c58a288a59f63f50ca46/README.md),
+[CLI guide](https://docs.bota.dev/cli),
 [API SDK source](https://github.com/bota-dev/api-sdk/tree/3546bc71da16885f664aaa7d057e5baddc0ba13b).
