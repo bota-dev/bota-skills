@@ -13,7 +13,7 @@ This repository contains customer integration recipes. The internal Bota enginee
 
 - [API reference](https://docs.bota.dev/api-reference/introduction)
 - [API SDK source and supported cohort](https://github.com/bota-dev/api-sdk), including candidate release status
-- [CLI guide](https://docs.bota.dev/cli) and [source](https://github.com/bota-dev/bota-cli), including published versus source-preview behavior
+- [CLI guide](https://docs.bota.dev/cli), including published versus source-preview behavior
 - [Local and hosted MCP setup](https://docs.bota.dev/mcp-server)
 - [Authentication](https://docs.bota.dev/authentication)
 
