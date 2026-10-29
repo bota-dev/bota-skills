@@ -32,7 +32,7 @@ MCP operations. Shared authentication does not mean every tool reads one file:
 - Direct hosted MCP clients own their secret configuration. The CLI bridge can
   instead use the selected CLI profile. Do not assume a remote client can read it.
 
-See [CLI setup](../cli/skill.md) for exact candidate and host requirements. Preserve
+See [CLI setup](../cli/skill.md) for exact version and host requirements. Preserve
 origin/project binding when switching credentials. A mismatched or empty injected
 key must not fall back to another account. Keep keys, refresh credentials and
 webhook/provider secrets out of logs, prompts and generated source.
@@ -41,21 +41,28 @@ webhook/provider secrets out of logs, prompts and generated source.
 
 The legacy browser key-export flow is retired. No-argument `bota auth login`
 without an explicit developer deployment remains configuration off. The
-unpublished source candidate implements protected enrollment/recovery and
-shared CLI/MCP sessions using fixed `--developer-deployment` selection and an
-explicit `--developer-profile`. Production activation and the real installed
-browser/native journey remain unqualified. Do not invent an OAuth issuer/client
-or turn a Dashboard JWT into an API token.
+`0.2.0-beta.0` cohort contains client support for protected enrollment/recovery
+and shared CLI/MCP sessions using fixed `--developer-deployment` selection and
+an explicit `--developer-profile`. Package availability does not establish
+production activation or the real installed browser/native journey. Verify
+those separately for the selected deployment. Do not invent an OAuth
+issuer/client or turn a Dashboard JWT into an API token.
 
-The source preview uses the same Platform account with separately consented developer
+The developer-session design uses the same Platform account with separately consented developer
 grants, short-lived distinct REST/MCP access tokens and rotating refresh families.
 Browser sign-out and developer-session revocation have separate lifecycles.
 Enrollment requires an existing Platform account with active organization
 owner/admin access to an eligible project and explicit scope consent. Enrollment
 is self-service within those existing permissions. Account creation remains separate.
-The published npm `0.1.0` CLI does not provide these preview commands. Follow the
+The historical npm `0.1.0` CLI does not provide these commands. Follow the
 [CLI guide](https://docs.bota.dev/cli)
 for supported hosts, fixed deployments and named recovery.
+
+Platform `auth login --no-browser` lets you choose a browser on the same
+computer. After protected custody acknowledges, the CLI emits the authorization
+URL on stderr and waits for the exact loopback callback. The default OS-browser
+launch is unchanged. Keep the command running. Keep the transient URL, proof and
+verifier material out of saved logs, issue receipts and shared chat.
 
 ## End-user enrollment and removal
 
