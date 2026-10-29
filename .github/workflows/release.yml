@@ -32,7 +32,7 @@ jobs:
       - run: node scripts/check-catalog.mjs
       - run: node --test tests/*.test.mjs webhook-handling/tests/*.test.mjs
       - name: Build and verify the clean tagged source
-        run: node scripts/build-release.mjs --output "$RUNNER_TEMP/bota-skills-release-${{ matrix.node }}"
+        run: node scripts/build-release.mjs --output "$RUNNER_TEMP/bota-skills-release"
 
   publish:
     needs: qualify
