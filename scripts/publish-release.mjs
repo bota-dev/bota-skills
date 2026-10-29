@@ -7,6 +7,27 @@ const repository = 'bota-dev/bota-skills';
 const base = `https://api.github.com/repos/${repository}`;
 const requireThat = (condition, message) => { if (!condition) throw new Error(message); };
 
+export async function readBoundedResponse(response, maximumBytes = 2 * 1024 * 1024) {
+  const length = response.headers.get('content-length');
+  const reader = response.body?.getReader();
+  requireThat(reader, 'GitHub response body is missing');
+  const chunks = [];
+  let size = 0;
+  try {
+    requireThat(length === null || /^\d+$/.test(length) && Number(length) < maximumBytes, 'GitHub response too large');
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return Buffer.concat(chunks, size);
+      size += value.byteLength;
+      requireThat(size < maximumBytes, 'GitHub response too large');
+      chunks.push(Buffer.from(value));
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally { reader.releaseLock(); }
+}
+
 export function validateReleaseContext(env, sourceCommit, version) {
   const tag = `v${version}`;
   requireThat(env.GITHUB_REPOSITORY === repository && /^[1-9]\d*$/.test(env.GITHUB_REPOSITORY_ID ?? ''), 'Release is restricted to the customer skills repository');
@@ -28,8 +49,9 @@ export function githubTransport(token) {
     if (!publicRead) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers['Content-Type'] = Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json';
     let response;
+    const deadline = AbortSignal.timeout(30000);
     try {
-      response = await fetch(target, { method, headers, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), redirect: 'manual', signal: AbortSignal.timeout(30000) });
+      response = await fetch(target, { method, headers, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), redirect: 'manual', signal: deadline });
     } catch {
       throw new Error(method === 'GET' ? 'GitHub read failed' : 'GitHub write outcome unknown; inspect the release before any further action');
     }
@@ -37,14 +59,25 @@ export function githubTransport(token) {
     if (binary && [301, 302, 307, 308].includes(response.status)) {
       const location = new URL(response.headers.get('location'));
       requireThat(location.protocol === 'https:' && !location.username && !location.password && ['release-assets.githubusercontent.com', 'objects.githubusercontent.com'].includes(location.hostname), 'Unexpected asset download redirect');
-      response = await fetch(location, { redirect: 'error', signal: AbortSignal.timeout(30000) }); // Never forward the token.
+      response = await fetch(location, { redirect: 'error', signal: deadline }); // Never forward the token.
     }
     requireThat(response.ok, `GitHub ${method} failed (${response.status}); inspect any partial release instead of replaying`);
-    requireThat(Number(response.headers.get('content-length') ?? 0) < 2 * 1024 * 1024, 'GitHub response too large');
-    const bytes = Buffer.from(await response.arrayBuffer());
-    requireThat(bytes.length < 2 * 1024 * 1024, 'GitHub response too large');
+    const bytes = await readBoundedResponse(response);
     return binary ? bytes : JSON.parse(bytes.toString('utf8'));
   };
+}
+
+async function assertNoExistingRelease(request, tag) {
+  // Tag lookup can omit drafts. A push-capable token's List releases response
+  // includes them; require a complete bounded listing before the first write.
+  requireThat(await request('GET', `${base}/releases/tags/${tag}`, { allowMissing: true }) === null, 'Release version is occupied; do not overwrite or adopt');
+  for (let page = 1; page <= 20; page++) {
+    const releases = await request('GET', `${base}/releases?per_page=100&page=${page}`);
+    requireThat(Array.isArray(releases) && releases.length <= 100 && releases.every(release => typeof release.tag_name === 'string'), 'Invalid release inventory');
+    requireThat(!releases.some(release => release.tag_name === tag), 'Release version is occupied by a draft or published release; do not overwrite or adopt');
+    if (releases.length < 100) return;
+  }
+  throw new Error('Release inventory exceeds bounded review limit; no publication attempted');
 }
 
 async function verifyRemoteSource(request, context) {
@@ -76,7 +109,7 @@ export async function publishRelease(context, release, request) {
   const repo = await request('GET', base);
   requireThat(repo.id === context.repositoryId && repo.full_name === repository && repo.private === false && repo.visibility === 'public' && repo.archived === false, 'Customer release requires the intended public repository');
   await verifyRemoteSource(request, context);
-  requireThat(await request('GET', `${base}/releases/tags/${context.tag}`, { allowMissing: true }) === null, 'Release version is occupied; do not overwrite or adopt');
+  await assertNoExistingRelease(request, context.tag);
   const draft = await request('POST', `${base}/releases`, { body: {
     tag_name: context.tag, target_commitish: context.sourceCommit, name: context.tag,
     draft: true, prerelease: context.version.includes('-'), make_latest: 'false',

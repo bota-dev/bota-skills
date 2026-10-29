@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { buildRelease, packFiles, sha256, unpackFiles, verifyRelease } from '../scripts/build-release.mjs';
 import { installRelease } from '../scripts/install-release.mjs';
-import { publishRelease, validateReleaseContext } from '../scripts/publish-release.mjs';
+import { publishRelease, readBoundedResponse, validateReleaseContext } from '../scripts/publish-release.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceCommit = 'a'.repeat(40);
@@ -102,6 +102,19 @@ test('exact-source release authority refuses wrong repo/event/tag/approval/immut
   ]) assert.throws(() => validateReleaseContext({ ...env, ...change }, sourceCommit, release.version));
 });
 
+test('streamed GitHub responses are bounded without Content-Length and cancel oversized bodies', async () => {
+  assert.equal((await readBoundedResponse(new Response('bounded'), 32)).toString(), 'bounded');
+  let cancelled = 0;
+  const oversized = new Response(new ReadableStream({
+    start(controller) { controller.enqueue(Buffer.alloc(16)); controller.enqueue(Buffer.alloc(17)); },
+    cancel() { cancelled++; },
+  }));
+  await assert.rejects(readBoundedResponse(oversized, 32), /too large/);
+  assert.equal(cancelled, 1);
+  const advertised = new Response(Buffer.from('small'), { headers: { 'content-length': '999' } });
+  await assert.rejects(readBoundedResponse(advertised, 32), /too large/);
+});
+
 function fakeGitHub(failure) {
   const calls = [], uploaded = [], bytes = new Map();
   let published = false;
@@ -113,6 +126,13 @@ function fakeGitHub(failure) {
     if (method === 'GET' && path.includes('/git/ref/tags/')) return { object: { type: 'commit', sha: failure === 'tag' ? 'b'.repeat(40) : sourceCommit } };
     if (method === 'GET' && path.includes('/compare/')) return { status: failure === 'unreviewed' ? 'diverged' : 'ahead', merge_base_commit: { sha: failure === 'unreviewed' ? 'b'.repeat(40) : sourceCommit } };
     if (method === 'GET' && path.includes('/releases/tags/')) return published || failure === 'occupied' ? remote() : null;
+    if (method === 'GET' && path.endsWith('/releases')) {
+      const page = Number(new URL(url).searchParams.get('page'));
+      if (failure === 'draft') return [{ tag_name: context.tag, draft: true }];
+      if (failure === 'later-draft') return page === 1 ? Array.from({ length: 100 }, (_, i) => ({ tag_name: `v0.0.${i}`, draft: false })) : [{ tag_name: context.tag, draft: true }];
+      if (failure === 'incomplete-list') return Array.from({ length: 100 }, (_, i) => ({ tag_name: `v0.0.${i}`, draft: false }));
+      return [];
+    }
     if (method === 'POST' && path.endsWith('/releases')) {
       if (failure === 'unknown') throw new Error('write outcome unknown');
       return remote();
@@ -149,13 +169,13 @@ test('publication stages once, checks uploaded bytes before publishing and reads
   assert.equal(fake.calls.filter(call => call.publicRead && call.url.includes('/releases/assets/')).length, 3);
 });
 
-for (const failure of ['private', 'tag', 'unreviewed', 'occupied', 'readback', 'unknown', 'mutable', 'public-readback']) {
+for (const failure of ['private', 'tag', 'unreviewed', 'occupied', 'draft', 'later-draft', 'incomplete-list', 'readback', 'unknown', 'mutable', 'public-readback']) {
   test(`publication refuses ${failure} without replay or cleanup of partial outcomes`, async () => {
     const fake = fakeGitHub(failure);
     await assert.rejects(publishRelease(context, release, fake.request));
     assert.equal(fake.calls.filter(call => call.method === 'DELETE').length, 0);
     assert.ok(fake.calls.filter(call => call.method === 'POST' && call.url.endsWith('/releases')).length <= 1);
-    if (['private', 'tag', 'unreviewed', 'occupied'].includes(failure)) assert.equal(fake.calls.filter(call => call.method !== 'GET').length, 0);
+    if (['private', 'tag', 'unreviewed', 'occupied', 'draft', 'later-draft', 'incomplete-list'].includes(failure)) assert.equal(fake.calls.filter(call => call.method !== 'GET').length, 0);
     if (failure === 'readback') assert.equal(fake.calls.filter(call => call.method === 'PATCH').length, 0);
   });
 }
