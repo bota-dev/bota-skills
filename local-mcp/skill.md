@@ -8,9 +8,10 @@ microphone or local-device authority.
 
 ## Configure without credentials in model context
 
-Use a CLI release matching the [source contract](https://github.com/bota-dev/bota-cli/blob/5270781b39ff59f7b889c58a288a59f63f50ca46/README.md).
-The `0.2.0-beta.0` source preview is unpublished; do not assume a public install
-includes profile commands. Enroll/verify a project API-key profile outside MCP
+Use the `0.2.0-beta.0` CLI cohort matching the [source contract](https://github.com/bota-dev/bota-cli/blob/2061654fed140ef65e3fa41e64b10e15af6a4123/README.md).
+Check the exact public package record and `bota --version`; a source checkout
+or an unversioned install does not establish this cohort. Enroll and verify a
+project API-key profile outside MCP
 first, following [CLI setup](../cli/skill.md).
 
 For a client that launches local commands, configure the equivalent of:
@@ -57,4 +58,13 @@ requests. Backend admission remains authoritative in both cases.
 
 For hosted schema/result parity through stdio, explicitly choose
 [`--mode hosted`](../hosted-mcp/skill.md). Do not silently fall back between modes.
-Platform delegated login remains inactive and separate from API-key enrollment.
+Platform delegated login requires matching deployed enrollment/Portal
+configuration and operating verification. API-key enrollment is independent.
+
+For a qualified Platform session, run `auth login --no-browser` separately from
+MCP if you want to choose the browser. The CLI emits its authorization URL on
+stderr only after protected custody acknowledges; open it in a browser on the
+same computer while the command waits for its loopback callback. The default
+OS-browser launch is unchanged. Keep URLs and proofs out of saved logs, issue
+receipts and shared chat. After enrollment, use the developer profile with
+`--mode hosted`.

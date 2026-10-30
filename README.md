@@ -11,21 +11,24 @@ This repository contains customer integration recipes. The internal Bota enginee
 
 The customer recipes and their release tooling use the [MIT license](LICENSE).
 The backend and internal engineering plugin remain separate private projects.
-`release.json` selects **0.1.0-beta.0** as the first source candidate; no tagged
-customer-skills bundle has been published yet. Merging this source does not
-publish a release or prove an installed assistant or live integration works.
+`release.json` records this source's bundle version, **0.1.0-beta.0**. Use a
+matching immutable GitHub release and its checksums as distribution evidence.
+A repository checkout or passing source checks do not establish publication,
+assistant discovery or a working live integration.
 
 ## Current references and coverage
 
 - [API reference](https://docs.bota.dev/api-reference/introduction)
 - [API SDK source and supported cohort](https://github.com/bota-dev/api-sdk), including candidate release status
-- [CLI guide](https://docs.bota.dev/cli), including published versus source-preview behavior
+- [CLI guide](https://docs.bota.dev/cli), with the supported public [`0.2.0-beta.0` package](https://www.npmjs.com/package/@bota.dev/cli/v/0.2.0-beta.0) and [pinned source](https://github.com/bota-dev/bota-cli/tree/2061654fed140ef65e3fa41e64b10e15af6a4123)
 - [Local and hosted MCP setup](https://docs.bota.dev/mcp-server)
 - [Authentication](https://docs.bota.dev/authentication)
 
-The API SDK and CLI guides distinguish unpublished source candidates from public
-package availability. Shared Platform login remains inactive; the auth guide
-describes supported API-key workflows and the remaining enrollment boundary.
+Each guide identifies its supported package cohort. Public packages, backend
+deployment and live integration acceptance are separate checks. Platform login
+also requires matching deployed enrollment/Portal configuration and operating
+verification; installing the CLI or this bundle does not activate it. Use the
+API-key setup unless your selected deployment has qualified developer enrollment.
 
 ## Skills
 
@@ -54,6 +57,11 @@ the [Agent Skills format](https://agentskills.io/specification), with YAML
 recipes keep their existing lowercase `skill.md` paths; the deterministic build
 adds installation metadata and rewrites their relative links. This is a skills
 bundle, not a CLI or MCP server installer.
+
+The repository root and lowercase recipe folders are authoring inputs, not an
+Agent Skills installation directory. Install the generated `bota-*` directories
+containing `SKILL.md` into your client's documented skill location. The source
+recipes can also be read as plain Markdown context.
 
 After a version is actually published, choose its exact tag from the
 [customer releases](https://github.com/bota-dev/bota-skills/releases), download
@@ -164,8 +172,9 @@ No personal access token, registry account, unversioned download or moving tag
 is required. An occupied release/draft or workflow rerun is refused. After an
 interruption or unknown write outcome, inspect the original run and exact
 release; do not replay, overwrite, adopt or automatically delete partial state.
-Resolve it through a reviewed follow-up/new version. The initial candidate's
-publication and actual client discovery are still unverified.
+Resolve it through a reviewed follow-up/new version. Verified release readback
+does not establish discovery in an assistant or live service acceptance; verify
+those separately for the selected client and deployment.
 
 The release manifest binds source commit, generator digest, catalog/schema
 version, pinned contract digest, original guide digests and every bundled file.

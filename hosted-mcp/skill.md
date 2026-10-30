@@ -11,18 +11,19 @@ mode only when its distinct compatibility schemas are intended.
 | Connection | Setup | Credential custody |
 | --- | --- | --- |
 | Direct HTTP | Configure the client's supported HTTP transport for `https://api.bota.dev/mcp` | Client secret/header facility holds the API key or enrolled end-user token |
-| Local stdio bridge | Qualified CLI candidate: `bota --profile work mcp --mode hosted` | CLI profile/environment holds the project key |
+| Local stdio bridge | Matching CLI `0.2.0-beta.0` cohort: `bota --profile work mcp --mode hosted` | CLI profile/environment holds the project key |
 
 Use the selected deployment's explicit trusted origin. Put `Authorization:
 Bearer …` in a supported secret facility, never an actual token in a shared
 config, shell history or model prompt. Check which secure storage/interpolation
 features that client actually implements instead of inventing environment syntax.
 
-The [CLI bridge source](https://github.com/bota-dev/bota-cli/blob/5270781b39ff59f7b889c58a288a59f63f50ca46/README.md)
-is an unpublished source preview. Package installation and the matching backend
-deployment are separate checks. [API-key setup](https://docs.bota.dev/mcp-server)
-does not enable browser OAuth. Private delegated discovery/PKCE components exist
-in backend source; they are not an activated public enrollment service.
+The [CLI bridge source](https://github.com/bota-dev/bota-cli/blob/2061654fed140ef65e3fa41e64b10e15af6a4123/README.md)
+describes the `0.2.0-beta.0` cohort. Verify its exact public package record;
+package installation and the matching backend deployment are separate checks.
+[API-key setup](https://docs.bota.dev/mcp-server) does not enable browser OAuth.
+Delegated discovery/PKCE code in the private backend is not evidence of an
+activated enrollment service or a verified live login flow.
 
 ## Verify role and capabilities
 

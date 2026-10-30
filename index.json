@@ -58,7 +58,7 @@
         "hmac"
       ],
       "apis": [],
-      "sha256": "944a1a3cb1f138274320a17274fb5d745360499c1c17ee95a20ed196eb7ba7bc",
+      "sha256": "0633cd997f744b6b86ddc11b7c3b0db464dac2891ac2743b1551ee1c60cc496f",
       "qualification": "source-reviewed"
     },
     {
@@ -147,7 +147,7 @@
         "GET /v1/devices",
         "GET /v1/recordings"
       ],
-      "sha256": "ea36cf576ca56b79c44a62752c7c8de5f5e95db4bbc3ce7dd75a9acdd6242480",
+      "sha256": "435d5c0fa26825ba0ad0592b4920d41f8068704de9d9e68ecd892d7ff825afa5",
       "qualification": "source-reviewed"
     },
     {
@@ -162,7 +162,7 @@
         "compatibility"
       ],
       "apis": [],
-      "sha256": "6894544e3a6be5f747b39911a59c4c2ea606f56438da0282fc9ef4c142a2eed3",
+      "sha256": "e4549c34c99aee8564031f29cc3b59071baf5b62008179830b13a6608d475bb0",
       "qualification": "source-reviewed"
     },
     {
@@ -177,13 +177,13 @@
         "bridge"
       ],
       "apis": [],
-      "sha256": "aaaaef6ef2e30e4b0a07c346b1f32187619b8f5016ddd49afc30c26569582266",
+      "sha256": "841c32a79d102680d29260268e331ee8428176eeb929ae0ba03a6a94eb1c8111",
       "qualification": "source-reviewed"
     },
     {
       "id": "shared-auth",
       "title": "Shared Authentication",
-      "description": "Choose project keys/profiles or end-user enrollment while keeping inactive Platform login and protocol credentials separate",
+      "description": "Choose project keys/profiles or end-user enrollment while keeping Platform enrollment qualification and protocol credentials separate",
       "path": "shared-auth/skill.md",
       "tags": [
         "auth",
@@ -196,7 +196,7 @@
         "POST /v1/end-users/:id/user-token",
         "DELETE /v1/end-users/:id/user-token"
       ],
-      "sha256": "c6a4befa8441c8358bd6ba36a323289537e050c70ebeb0f90779628e7c2e5526",
+      "sha256": "aa43d2b8a90493bc9813e615bceee56a63ba477812ff1a792e2d9c3d76fd1e48",
       "qualification": "source-reviewed"
     }
   ],
@@ -205,7 +205,7 @@
   "sources": {
     "backend": "https://github.com/bota-dev/bota/tree/2c388b098d4e0d8a4d3893018fed47a870305795",
     "api_sdk": "https://github.com/bota-dev/api-sdk/tree/3546bc71da16885f664aaa7d057e5baddc0ba13b",
-    "cli": "https://github.com/bota-dev/bota-cli/tree/5270781b39ff59f7b889c58a288a59f63f50ca46",
+    "cli": "https://github.com/bota-dev/bota-cli/tree/2061654fed140ef65e3fa41e64b10e15af6a4123",
     "device_binding": "https://github.com/bota-dev/bota/tree/d69693982e48cb8b70f501387f11802bff2d42b0"
   },
   "contracts_sha256": "705d1b34ae00f2bc8cc4bad185e8b9d65236778c6f1d32cccd993541caea0030"

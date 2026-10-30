@@ -15,8 +15,9 @@ manager as `BOTA_WEBHOOK_SECRET`. Public `/v1/webhooks` CRUD is unavailable;
 do not invent API/SDK management methods.
 
 Local development uses an explicitly configured tunnel and Platform endpoint.
-The CLI source preview offers manual forwarding of original raw bytes and
-signature headers; it neither registers endpoints nor verifies for the receiver.
+The [CLI `0.2.0-beta.0` cohort](../cli/skill.md) offers manual forwarding of
+original raw bytes and signature headers; it neither registers endpoints nor
+verifies for the receiver.
 Tunnel creation/test delivery need user intent. Never paste secrets into a model.
 
 ## Verify before parsing

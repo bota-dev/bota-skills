@@ -7,21 +7,27 @@ MCP process. Use the API SDK for application code and Platform for webhook setup
 
 ## Select the release and credential
 
-The [CLI preview guide](https://docs.bota.dev/cli)
-describes an unpublished `0.2.0-beta.0` candidate. A currently installed public
-package need not support its profile, identity, administration or hosted-mode
-commands. Check `bota --version`, matching release notes and `--help` first.
+This recipe targets the public prerelease
+[`@bota.dev/cli@0.2.0-beta.0`](https://www.npmjs.com/package/@bota.dev/cli/v/0.2.0-beta.0)
+from the [pinned CLI source](https://github.com/bota-dev/bota-cli/blob/2061654fed140ef65e3fa41e64b10e15af6a4123/README.md).
+Select it explicitly with `npm install --global @bota.dev/cli@0.2.0-beta.0`.
+An unversioned install follows `latest`, which can select an older cohort.
+Check the exact package record, provenance, `bota --version`, the
+[CLI guide](https://docs.bota.dev/cli) and `--help` before use. Package delivery
+does not establish a matching backend deployment or live integration acceptance.
 
 Have your secret manager inject `BOTA_API_KEY` into the process environment. Do
 not put a real key in a command, generated configuration or assistant prompt.
 The legacy browser key-export flow is retired. Without an explicit developer
 deployment, no-argument `auth login` remains configuration off.
 
-The unpublished candidate implements protected Platform enrollment/recovery and
-shared CLI/MCP sessions through fixed `--developer-deployment dev` or
+The cohort contains client support for protected Platform enrollment/recovery
+and shared CLI/MCP sessions through fixed `--developer-deployment dev` or
 `--developer-deployment prod` selection and an explicit `--developer-profile`.
 Local MCP requires `--mode hosted` and never starts login itself. These source
-selectors do not establish production activation or real installed acceptance.
+selectors and package availability do not establish production activation or
+real installed acceptance. Verify the selected deployment's enrollment and
+Portal configuration before using this path.
 Use only an existing Platform account with active organization owner/admin
 access to the chosen project and explicit read-scope consent. Enrollment is
 self-service within those existing permissions. Account creation remains separate.
@@ -29,9 +35,22 @@ Follow the [CLI guide](https://docs.bota.dev/cli)
 for host requirements and exact named recovery; never invent an issuer or fall
 back from a refused developer profile to an API key.
 
+To choose the browser yourself, add `--no-browser` to Platform login:
+
+```bash
+bota --developer-deployment prod auth login --name prod-work --scope devices:read --no-browser
+```
+
+The CLI emits the authorization URL on stderr only after protected custody
+acknowledges. Keep the command running and open the complete URL in a browser
+on the same computer for its owned loopback callback. The default still opens
+the operating system's browser. Keep the transient URL out of saved logs, issue
+receipts and shared chat; it contains no token, authorization code or verifier.
+Manual handoff leaves PKCE, consent, deadlines and named recovery unchanged.
+
 ## Enroll an explicit environment profile
 
-For a matching candidate and backend:
+For a matching CLI version and backend:
 
 ```bash
 bota --api-url https://api.bota.dev auth profiles add work --from-env
@@ -49,7 +68,7 @@ it does not revoke the server key or stop an existing MCP process.
 
 ## Secure profiles on supported hosts
 
-The candidate also offers Windows x64/local NTFS OS credential storage on the
+The cohort also offers Windows x64/local NTFS OS credential storage on the
 qualified Node builds. Enroll with hidden input, then select it explicitly:
 
 ```bash
