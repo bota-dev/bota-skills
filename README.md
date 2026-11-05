@@ -200,6 +200,12 @@ candidates. It uses the pinned community scanner with read-only repository
 permissions and requires no scanner account or cloud token. Scanner errors and
 findings fail the check.
 
+PR edits that change only the title or body use a separate concurrency group
+and skip the scanner without emitting a canonical `Scan` check. GitHub may
+display the skipped job's unevaluated name expression. These runs do not cancel
+or replace the required source `Scan`. Base retargets and missing or unrecognized
+edit payloads continue to run `Scan` with the existing source concurrency group.
+
 Manual dispatch accepts an optional full 40-character commit `revision` for a
 retrospective scan. The 90-day scan artifact records the exact scanned source,
 workflow revision, scanner version, rule snapshots, findings and coverage. A
