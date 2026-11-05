@@ -26,9 +26,7 @@ concurrency:
 
 jobs:
   scan:
-    # A skipped metadata check must not replace or cancel the required source Scan.
-    name: ${{ github.event_name == 'pull_request' && github.event.action == 'edited' && (github.event.changes.title || github.event.changes.body) && !github.event.changes.base && 'PR metadata' || 'Scan' }}
-    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'edited' && (github.event.changes.title || github.event.changes.body) && !github.event.changes.base) }}
+    name: Scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:

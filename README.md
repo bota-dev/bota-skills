@@ -200,11 +200,11 @@ candidates. It uses the pinned community scanner with read-only repository
 permissions and requires no scanner account or cloud token. Scanner errors and
 findings fail the check.
 
-PR edits that change only the title or body use a separate concurrency group
-and skip the scanner without emitting a canonical `Scan` check. GitHub may
-display the skipped job's unevaluated name expression. These runs do not cancel
-or replace the required source `Scan`. Base retargets and missing or unrecognized
-edit payloads continue to run `Scan` with the existing source concurrency group.
+PR title/body edits run the full canonical `Scan` check. Recognized metadata-only
+edits use a separate concurrency group so they cannot cancel an active source
+scan. Base retargets and missing or unrecognized edit payloads retain the source
+concurrency group. The required `Scan` check is never skipped; existing source
+coverage, trust guards, scanner rules and evidence remain unchanged.
 
 Manual dispatch accepts an optional full 40-character commit `revision` for a
 retrospective scan. The 90-day scan artifact records the exact scanned source,
